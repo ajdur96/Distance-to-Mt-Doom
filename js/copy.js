@@ -111,6 +111,10 @@ export const COPY = {
   legsTip: (r) => `<strong>${r.numeral} · ${r.name}</strong><br>${r.road}: ${r.roadMi} miles of walking effort<br>Frodo: ${r.frodoMi} miles`,
   legsTableHead: ["Leg", "Walking effort on this road (miles)", "Frodo’s miles"],
   jumpTo: (numeral, name) => `Go to ${numeral}, ${name}`,
+  photoAlt: (name) => `Photo of ${name}, from its Wikipedia article`,
+  photoBy: "Photo:",
+  photoVia: ", via Wikimedia Commons",
+  photoAuthorUnknown: "author unknown",
   // --- Drafted by Claude: end ---
   searchNone: "No matching places on this map",
   searchLandmark: "Landmark",
@@ -168,7 +172,9 @@ export const COPY = {
     ] },
     { title: "Photo credits", paragraphs: [
       "Landmark photos come from Wikimedia Commons and are shown with a sepia filter. Each is credited below with its author and license.",
-      "[photoCredits]"
+      "[photoCredits]",
+      // Drafted by Claude, to be edited by the author
+      "Photos on the Your Journey tab are fetched live from Wikipedia when your road is chosen. Each is the lead image of the landmark’s English Wikipedia article, shown only if it is freely licensed, and is credited beneath it with its author and license."
     ] },
     { title: "Sources and tools", paragraphs: [
       "Frodo’s distances follow Karen Wynn Fonstad’s The Atlas of Middle-earth, as summarized by Lord of the Steps. Elevation comes from AWS Terrain Tiles; land cover from the Commission for Environmental Cooperation’s North American Land Change Monitoring System; coastlines, lakes, rivers, and borders from Natural Earth; and landmarks from Wikidata.",

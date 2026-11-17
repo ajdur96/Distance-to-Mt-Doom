@@ -142,6 +142,12 @@ a { color: inherit; }
 .step .book { font-style: italic; }
 .step .photo { margin: 1.1rem 0 1rem; padding: 0; border: 1.5px solid var(--ink); outline: 1px solid var(--ink-soft); outline-offset: 4px; }
 .step .photo img { display: block; width: 100%; height: auto; max-height: 46vh; object-fit: cover; filter: sepia(0.6) contrast(0.92); }
+.road-list .live-photo { margin: 0.4rem 0 0.8rem; padding: 0; }
+.road-list .live-photo:not(.is-filled) { display: none; }
+.road-list .live-photo img { display: block; width: 100%; height: auto; max-height: 34vh; object-fit: cover; filter: sepia(0.6) contrast(0.92);
+  border: 1.5px solid var(--ink); outline: 1px solid var(--ink-soft); outline-offset: 4px; background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.road-list .live-photo figcaption { margin-top: 0.55rem; font-size: 0.82rem; font-style: italic; color: var(--ink-faint); line-height: 1.35; }
+.road-list .live-photo figcaption a { color: inherit; text-underline-offset: 2px; }
 .method .photo-credits { padding-left: 1.2rem; font-size: 1rem; }
 .method .photo-credits li { margin: 0.2rem 0; }
 .method h4 { font-family: "IM Fell English SC", "IM Fell English", Georgia, serif; font-weight: 400; font-size: 1.2rem; margin: 1.2rem 0 0.3rem; color: var(--ink-soft); }

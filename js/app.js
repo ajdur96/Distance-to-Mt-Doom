@@ -909,6 +909,82 @@ function renderRoad() {
   }
 }
 
+/* ---------- Your Journey photos, fetched live from Wikipedia ----------
+   Each landmark's lead image, only if it is freely licensed, with its author and
+   license from Wikimedia Commons. Two requests cover a whole road. A landmark
+   without a free photo, or any network trouble, just leaves the card without one. */
+const WIKI_API = "https://en.wikipedia.org/w/api.php";
+const livePhotoCache = new Map();  // Wikipedia title -> photo, or null for none
+const wikiQuery = async (params) => {
+  const url = `${WIKI_API}?${new URLSearchParams({ action: "query", format: "json", formatversion: "2", origin: "*", ...params })}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Wikipedia ${r.status}`);
+  return (await r.json()).query || {};
+};
+// Commons stores authors as HTML; keep only the words
+const plainText = (html) => (new DOMParser().parseFromString(html || "", "text/html").body.textContent || "").replace(/\s+/g, " ").trim();
+async function fetchLivePhotos(titles) {
+  const need = [...new Set(titles)].filter((t) => !livePhotoCache.has(t));
+  for (let i = 0; i < need.length; i += 50) {  // the API takes up to 50 titles at once
+    const batch = need.slice(i, i + 50);
+    const q = await wikiQuery({ prop: "pageimages", piprop: "thumbnail|name", pithumbsize: "640", pilicense: "free",
+      redirects: "1", titles: batch.join("|") });
+    // Follow the API's spelling fixes and redirects back to the titles we asked for
+    const askedAs = new Map(batch.map((t) => [t, t]));
+    for (const n of [...(q.normalized || []), ...(q.redirects || [])]) askedAs.set(n.to, askedAs.get(n.from) ?? n.from);
+    const found = new Map();
+    for (const pg of q.pages || []) {
+      if (pg.thumbnail && pg.pageimage) found.set(askedAs.get(pg.title) ?? pg.title, { ...pg.thumbnail, file: `File:${pg.pageimage}` });
+    }
+    if (found.size) {
+      const fileTitles = [...new Set([...found.values()].map((f) => f.file))];
+      const info = await wikiQuery({ prop: "imageinfo", iiprop: "extmetadata|url",
+        iiextmetadatafilter: "Artist|LicenseShortName|LicenseUrl", titles: fileTitles.join("|") });
+      const fileAskedAs = new Map(fileTitles.map((t) => [t, t]));
+      for (const n of info.normalized || []) fileAskedAs.set(n.to, n.from);
+      const infoByFile = new Map();
+      for (const pg of info.pages || []) if (pg.imageinfo?.[0]) infoByFile.set(fileAskedAs.get(pg.title) ?? pg.title, pg.imageinfo[0]);
+      for (const [title, f] of found) {
+        const ii = infoByFile.get(f.file);
+        if (!ii || !ii.extmetadata?.LicenseShortName) continue;  // no license on record: don't show it
+        const md = ii.extmetadata;
+        const author = plainText(md.Artist?.value);
+        livePhotoCache.set(title, { src: f.source, width: f.width, height: f.height, page: ii.descriptionurl,
+          author: author.length > 90 ? `${author.slice(0, 88)}…` : author || COPY.photoAuthorUnknown,
+          license: md.LicenseShortName.value, licenseUrl: md.LicenseUrl?.value || ii.descriptionurl });
+      }
+    }
+    for (const t of batch) if (!livePhotoCache.has(t)) livePhotoCache.set(t, null);
+  }
+}
+// Fill every empty photo slot in the road list; a newer road list cancels an older fill
+let photoFillToken = 0;
+async function fillLivePhotos() {
+  const token = ++photoFillToken;
+  const slots = [...document.querySelectorAll("#yours-road figure.live-photo[data-wiki]")];
+  if (!slots.length) return;
+  try { await fetchLivePhotos(slots.map((s) => s.dataset.wiki)); } catch (err) { /* offline or blocked: no photos */ }
+  if (token !== photoFillToken) return;
+  for (const slot of slots) {
+    const photo = livePhotoCache.get(slot.dataset.wiki);
+    if (!photo) { slot.remove(); continue; }
+    const fig = d3.select(slot);
+    fig.append("img").attr("src", photo.src).attr("width", photo.width).attr("height", photo.height)
+      .attr("alt", COPY.photoAlt(slot.dataset.label)).attr("loading", "lazy").attr("decoding", "async")
+      .on("error", () => slot.remove());
+    const cap = fig.append("figcaption");
+    cap.append("span").text(`${COPY.photoBy} `);
+    cap.append("a").attr("href", photo.page).attr("target", "_blank").attr("rel", "noopener").text(photo.author);
+    cap.append("span").text(", ");
+    cap.append("a").attr("href", photo.licenseUrl).attr("target", "_blank").attr("rel", "noopener").text(photo.license);
+    cap.append("span").text(COPY.photoVia);
+    slot.classList.add("is-filled");
+  }
+}
+// An empty slot, filled once the photos arrive
+const photoSlot = (li, landmark) => li.append("figure").attr("class", "photo live-photo")
+  .attr("data-wiki", landmark.wiki).attr("data-label", landmark.label);
+
 function renderRoadCards() {
   const host = d3.select("#yours-road");
   host.selectAll("*").remove();
@@ -924,6 +1000,7 @@ function renderRoadCards() {
   if (info.landmark) {
     startTitle.append("a").attr("href", `https://en.wikipedia.org/wiki/${encodeURIComponent(info.landmark.wiki.replace(/ /g, "_"))}`)
       .attr("target", "_blank").attr("rel", "noopener").text(info.name);
+    photoSlot(start, info.landmark);
     start.append("p").attr("class", "wiki").text(info.landmark.sentence)
       .append("span").attr("class", "credit").text(" From Wikipedia");
   } else {
@@ -941,6 +1018,7 @@ function renderRoadCards() {
     const h = li.append("h4");
     h.append("a").attr("href", `https://en.wikipedia.org/wiki/${encodeURIComponent(s.landmark.wiki.replace(/ /g, "_"))}`)
       .attr("target", "_blank").attr("rel", "noopener").text(s.landmark.label);
+    photoSlot(li, s.landmark);
     li.append("p").attr("class", "wiki").text(s.landmark.sentence)
       .append("span").attr("class", "credit").text(" From Wikipedia");
     li.append("p").attr("class", "lede").text(COPY.yoursStopLine({ walkedMi: walkedKm / KM_PER_MI, fromHomeMi,
@@ -976,6 +1054,7 @@ function renderRoadCards() {
     const tr = body.append("tr");
     r.forEach((v) => tr.append("td").text(v));
   }
+  fillLivePhotos();
 }
 
 function drawYoursMap() {
