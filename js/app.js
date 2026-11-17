@@ -927,7 +927,7 @@ async function fetchLivePhotos(titles) {
   const need = [...new Set(titles)].filter((t) => !livePhotoCache.has(t));
   for (let i = 0; i < need.length; i += 50) {  // the API takes up to 50 titles at once
     const batch = need.slice(i, i + 50);
-    const q = await wikiQuery({ prop: "pageimages", piprop: "thumbnail|name", pithumbsize: "640", pilicense: "free",
+    const q = await wikiQuery({ prop: "pageimages", piprop: "thumbnail|name", pithumbsize: "320", pilicense: "free",
       redirects: "1", titles: batch.join("|") });
     // Follow the API's spelling fixes and redirects back to the titles we asked for
     const askedAs = new Map(batch.map((t) => [t, t]));
