@@ -1,0 +1,280 @@
+:root {
+  --paper: #e2cd98;
+  --paper-deep: #c4a46a;
+  --land: #ecdcae;
+  --sea: #d3bd86;
+  --water: #c2b483;
+  --ink: #2e2015;
+  --ink-soft: #6a5232;
+  --ink-faint: #9a8058;
+  --blood: #7a1f1a;
+  --verdigris: #2f5a49;
+  --ring: #8a3b1c;
+  --card: rgba(236, 220, 174, 0.92);
+  --river: #4d6670;
+  color-scheme: light;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #241b12; --paper-deep: #120c07; --land: #31261a; --sea: #1c160f; --water: #26302a;
+    --ink: #ecdcb4; --ink-soft: #b9a079; --ink-faint: #7f6a4c;
+    --blood: #d2654a; --verdigris: #7fb59c; --ring: #d98a52; --card: rgba(41, 32, 22, 0.94); --river: #8fb2bb;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #241b12; --paper-deep: #120c07; --land: #31261a; --sea: #1c160f; --water: #26302a;
+  --ink: #ecdcb4; --ink-soft: #b9a079; --ink-faint: #7f6a4c;
+  --blood: #d2654a; --verdigris: #7fb59c; --ring: #d98a52; --card: rgba(41, 32, 22, 0.94); --river: #8fb2bb;
+  color-scheme: dark;
+}
+*, *::before, *::after { box-sizing: inherit; }
+html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "IM Fell English", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: 1.125rem;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+body::before {
+  content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px);
+  z-index: 10; background: var(--paper);
+}
+/* Aged paper: procedural fibers and stains, plus burned edges */
+.paper-grain {
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  opacity: 0.45; mix-blend-mode: multiply;
+}
+.paper-burn {
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background: radial-gradient(ellipse at 50% 45%, transparent 55%, color-mix(in srgb, var(--paper-deep) 70%, transparent) 100%);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .paper-grain { mix-blend-mode: screen; opacity: 0.08; } }
+:root[data-theme="dark"] .paper-grain { mix-blend-mode: screen; opacity: 0.08; }
+main { position: relative; z-index: 1; }
+h1, h2, h3 { font-family: "IM Fell English SC", "IM Fell English", Georgia, serif; font-weight: 400; margin: 0; }
+p { margin: 0 0 1em; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--blood); outline-offset: 3px; }
+
+/* ---------- Opening ---------- */
+.opening {
+  min-height: 74vh; display: grid; place-items: center; padding: 6vh 6vw;
+  position: relative;
+}
+.cartouche {
+  max-width: 44rem; text-align: center; padding: 3.2rem 2.6rem 2.4rem;
+  border: 1.5px solid var(--ink); outline: 1px solid var(--ink-soft); outline-offset: 6px;
+  background: color-mix(in srgb, var(--land) 55%, transparent);
+}
+.cartouche h1 { font-size: clamp(2.4rem, 6.4vw, 4.6rem); line-height: 1.02; letter-spacing: 0.01em; text-wrap: balance; }
+.cartouche .sub { font-style: italic; font-size: clamp(1.1rem, 2.2vw, 1.35rem); color: var(--ink-soft); margin: 1.3rem auto 0; max-width: 32rem; }
+.compass { width: 74px; height: 74px; margin: 0 auto 1.4rem; display: block; color: var(--ink); }
+.prose { max-width: 38rem; margin: 0 auto; padding: 0 6vw 10vh; }
+.prose p { text-indent: 1.5em; }
+.prose p:first-of-type { text-indent: 0; }
+.prose p:first-of-type::first-letter {
+  font-family: "IM Fell English SC", serif; float: left; font-size: 3.4em; line-height: 0.85; padding: 0.06em 0.08em 0 0; color: var(--blood);
+}
+
+/* ---------- Tabs ---------- */
+.tabs {
+  display: flex; justify-content: center; flex-wrap: wrap; gap: 0.4rem 2.2rem;
+  padding: 0.6rem 1rem 1rem; margin: 0 auto 4vh; max-width: 60rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--ink) 30%, transparent);
+}
+.tabs a {
+  font-family: "IM Fell English SC", "IM Fell English", Georgia, serif; font-size: 1.3rem;
+  color: var(--ink-soft); text-decoration: none; padding: 0.2rem 0.1rem; border-bottom: 2px solid transparent;
+}
+.tabs a:hover { color: var(--ink); }
+.tabs a[aria-current="page"] { color: var(--blood); border-bottom-color: var(--blood); }
+.tab-panel[hidden] { display: none; }
+
+/* ---------- How it was made ---------- */
+.method { max-width: 40rem; margin: 0 auto; padding: 2vh 6vw 14vh; }
+.method h2 { font-size: clamp(2rem, 4vw, 2.8rem); line-height: 1.05; margin-bottom: 1.6rem; }
+.method h3 { font-size: 1.5rem; margin: 2.2rem 0 0.6rem; color: var(--blood); }
+.method .placeholder { font-style: italic; color: var(--ink-faint); }
+.friction { width: 100%; border-collapse: collapse; margin: 0.4rem 0 1.4rem; font-size: 1rem; }
+.friction th { font-family: "IM Fell English SC", Georgia, serif; font-weight: 400; text-align: left; color: var(--ink-soft); border-bottom: 1.5px solid var(--ink); padding: 0.3rem 0.4rem; }
+.friction td { padding: 0.3rem 0.4rem; border-bottom: 1px solid color-mix(in srgb, var(--ink) 20%, transparent); }
+.friction td:last-child, .friction th:last-child { text-align: right; white-space: nowrap; }
+
+/* ---------- The journey ---------- */
+.scrolly { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(19rem, 1fr); position: relative; }
+.stage {
+  position: sticky; top: env(safe-area-inset-top, 0px);
+  height: calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+  border-right: 1px solid color-mix(in srgb, var(--ink) 30%, transparent);
+}
+.stage-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.8rem 1.2rem 0.2rem; }
+.stage-bar .where { font-style: italic; color: var(--ink-soft); font-size: 1rem; }
+.roads { display: inline-flex; border: 1.5px solid var(--ink); border-radius: 999px; padding: 3px; gap: 2px; }
+.roads[hidden] { display: none; }
+.roads button {
+  font: inherit; font-size: 1rem; color: var(--ink); background: transparent; border: 0; border-radius: 999px;
+  padding: 0.25rem 0.95rem; cursor: pointer;
+}
+.roads button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.roads button .dot { display: inline-block; width: 0.6em; height: 0.6em; border-radius: 50%; margin-right: 0.45em; vertical-align: 0.05em; }
+.map-wrap { position: relative; min-height: 0; }
+.map-wrap svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.profile-wrap { height: 128px; padding: 0 1.2rem 0.6rem; }
+.profile-wrap svg { width: 100%; height: 100%; display: block; overflow: visible; }
+
+.steps { padding: 30vh 2.2rem 8vh; }
+.step { min-height: 88vh; display: flex; align-items: center; }
+.step-inner { max-width: 30rem; }
+.step .numeral { font-family: "IM Fell English SC", serif; color: var(--blood); font-size: 1.05rem; letter-spacing: 0.04em; }
+.step h2 { font-size: clamp(2rem, 3.6vw, 2.8rem); line-height: 1.05; margin: 0.15rem 0 0.9rem; }
+.step .lede { font-style: italic; color: var(--ink-soft); }
+.step .places { margin-top: 0.4rem; }
+.step.is-active h2 { color: var(--blood); }
+.step .route-line { border-left: 2px solid var(--route, var(--blood)); padding-left: 0.9rem; }
+.step .book { font-style: italic; }
+.step .photo { margin: 1.1rem 0 1rem; padding: 0; border: 1.5px solid var(--ink); outline: 1px solid var(--ink-soft); outline-offset: 4px; }
+.step .photo img { display: block; width: 100%; height: auto; max-height: 46vh; object-fit: cover; filter: sepia(0.6) contrast(0.92); }
+.method .photo-credits { padding-left: 1.2rem; font-size: 1rem; }
+.method .photo-credits li { margin: 0.2rem 0; }
+.method h4 { font-family: "IM Fell English SC", "IM Fell English", Georgia, serif; font-weight: 400; font-size: 1.2rem; margin: 1.2rem 0 0.3rem; color: var(--ink-soft); }
+.step .kicker { font-family: "IM Fell English SC", Georgia, serif; font-style: normal; color: var(--blood); margin-right: 0.35em; }
+
+/* ---------- Your own journey ---------- */
+.yours { padding: 14vh 4vw 8vh; }
+.yours header { max-width: 40rem; margin: 0 auto 1.6rem; text-align: center; }
+.yours h2 { font-size: clamp(2.2rem, 4.6vw, 3.4rem); line-height: 1.05; margin-bottom: 0.8rem; }
+.yours .status { font-style: italic; color: var(--ink-soft); min-height: 1.6em; margin: 0.4rem 0 0; }
+.yours-map {
+  position: relative; width: min(100%, 72rem); margin: 0 auto; aspect-ratio: 4 / 3; max-height: 82vh;
+  border: 1.5px solid var(--ink); outline: 1px solid var(--ink-soft); outline-offset: 5px; cursor: crosshair;
+}
+.yours-map svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.yours-tools { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.8rem 1.6rem; margin: 1.4rem auto 0; max-width: 60rem; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.place-search { position: relative; max-width: 30rem; margin: 1.2rem auto 0; text-align: left; }
+.place-search input {
+  width: 100%; font: inherit; font-size: 1.05rem; color: var(--ink); background: color-mix(in srgb, var(--land) 70%, transparent);
+  border: 1.5px solid var(--ink); border-radius: 999px; padding: 0.5rem 1.1rem;
+}
+.place-search input::placeholder { color: var(--ink-faint); font-style: italic; }
+.place-search ul {
+  position: absolute; z-index: 5; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 0.3rem 0; list-style: none;
+  background: var(--land); border: 1.5px solid var(--ink); box-shadow: 0 8px 18px -10px color-mix(in srgb, var(--ink) 70%, transparent);
+}
+.place-search li { padding: 0.35rem 1.1rem; cursor: pointer; }
+.place-search li .sub { color: var(--ink-soft); font-style: italic; font-size: 0.92rem; margin-left: 0.4em; }
+.place-search li[aria-selected="true"], .place-search li:hover { background: color-mix(in srgb, var(--ring) 22%, transparent); }
+.place-search li.empty { cursor: default; color: var(--ink-faint); font-style: italic; }
+.yours-tools button:disabled { opacity: 0.45; cursor: default; }
+.yours-tools button {
+  font: inherit; font-size: 1rem; color: var(--ink); background: transparent; border: 1.5px solid var(--ink);
+  border-radius: 999px; padding: 0.3rem 1.1rem; cursor: pointer;
+}
+.legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.3rem 1.1rem; font-size: 0.95rem; color: var(--ink-soft); margin: 1rem auto 0; max-width: 60rem; }
+.legend span::before { content: ""; display: inline-block; width: 1.1em; height: 0.8em; background: var(--c); border: 1px solid color-mix(in srgb, var(--ink) 50%, transparent); margin-right: 0.4em; vertical-align: -0.05em; }
+
+.yours-road { max-width: 64rem; margin: 3rem auto 0; }
+.yours-road h3 { font-size: clamp(1.8rem, 3.4vw, 2.4rem); text-align: center; margin-bottom: 0.4rem; }
+.yours-road .road-intro { text-align: center; font-style: italic; color: var(--ink-soft); max-width: 40rem; margin: 0 auto 1.6rem; }
+.road-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 27rem), 1fr)); gap: 1.6rem 2.4rem; }
+.road-list li { border-top: 1.5px solid var(--ink); padding-top: 0.7rem; font-size: 1.02rem; }
+.road-list .numeral { font-family: "IM Fell English SC", serif; color: var(--blood); }
+.road-list h4 { font-family: "IM Fell English", Georgia, serif; font-weight: 400; font-size: 1.45rem; margin: 0.15rem 0 0.5rem; line-height: 1.15; }
+.road-list h4 a { color: var(--ink); text-decoration-color: color-mix(in srgb, var(--ink) 40%, transparent); text-underline-offset: 3px; }
+.road-list h4 a:hover { color: var(--blood); }
+.road-list .wiki .credit { font-size: 0.85rem; color: var(--ink-faint); font-style: italic; }
+.road-list .lede { font-style: italic; color: var(--ink-soft); }
+.road-list .book { font-style: italic; }
+.road-list .kicker { font-family: "IM Fell English SC", Georgia, serif; font-style: normal; color: var(--blood); margin-right: 0.35em; }
+.yours-road .stats-title { margin-top: 3rem; }
+.friction.stats { max-width: 44rem; margin: 1rem auto 0; display: table; }
+.friction.stats td:first-child { color: var(--ink-soft); font-style: italic; }
+.friction.stats td:last-child, .friction.stats th:last-child { text-align: right; white-space: normal; }
+.friction.stats td:nth-child(2), .friction.stats th:nth-child(2) { text-align: right; }
+.notes { max-width: 38rem; margin: 0 auto; padding: 8vh 6vw 14vh; font-size: 1rem; color: var(--ink-soft); }
+.notes h2 { font-size: 1.6rem; color: var(--ink); margin-bottom: 0.8rem; }
+
+/* ---------- Strips under the map: elevation and leg comparison ---------- */
+.strips { position: relative; }
+.strip-toggle { display: none; }
+.profile-jump { cursor: pointer; outline: none; }
+.profile-jump:hover .profile-text, .profile-jump:focus-visible .profile-text { fill: var(--blood); text-decoration: underline; }
+.profile-jump.is-here .profile-text { fill: var(--ink); }
+.legs-wrap { position: relative; height: 112px; padding: 0 1.2rem 0.5rem; display: flex; flex-direction: column; }
+.legs-wrap svg { width: 100%; flex: 1 1 auto; min-height: 0; display: block; overflow: visible; }
+.legs-key { font-size: 0.85rem; color: var(--ink-soft); font-style: italic; display: flex; gap: 0.2rem 1.1rem; flex-wrap: wrap; padding-left: 44px; }
+.legs-key .key-bar { display: inline-block; width: 0.55em; height: 0.9em; border-radius: 2px 2px 0 0; margin-right: 0.4em; vertical-align: -0.1em; background: var(--route); }
+.legs-key .key-tick { display: inline-block; width: 1.1em; height: 0; border-top: 2px solid var(--ink); margin-right: 0.4em; vertical-align: 0.3em; }
+.leg-bar { transition: opacity 300ms ease; }
+.leg-tick { stroke: var(--ink); stroke-width: 2; stroke-linecap: round; }
+.leg-hit { fill: transparent; cursor: pointer; }
+.legs-tip {
+  position: absolute; z-index: 6; pointer-events: none; font-size: 0.9rem; line-height: 1.35; white-space: nowrap;
+  background: var(--land); color: var(--ink); border: 1.5px solid var(--ink); padding: 0.35rem 0.6rem;
+  box-shadow: 0 6px 14px -8px color-mix(in srgb, var(--ink) 70%, transparent); transform: translate(-50%, -100%);
+}
+.legs-tip strong { font-family: "IM Fell English SC", Georgia, serif; font-weight: 400; }
+.locate-row { margin-top: 0.9rem; }
+
+/* ---------- Map ink ---------- */
+.zoom path, .zoom circle { vector-effect: non-scaling-stroke; }
+.sea { fill: var(--sea); }
+.land { fill: var(--land); stroke: var(--ink); stroke-width: 0.9; }
+.lake { fill: var(--water); stroke: var(--ink-soft); stroke-width: 0.6; }
+.state { fill: none; stroke: var(--ink); stroke-opacity: 0.35; stroke-width: 0.5; stroke-dasharray: 3 2.5; }
+.country { fill: none; stroke: var(--ink); stroke-opacity: 0.65; stroke-width: 1.1; stroke-dasharray: 7 3 1.5 3; }
+.river { fill: none; stroke: var(--river); stroke-width: 1; stroke-linecap: round; }
+.bridge { fill: none; stroke: var(--ink); stroke-width: 1.1; stroke-linecap: round; }
+.glyphs { fill: none; stroke: var(--ink); stroke-opacity: 0.6; stroke-width: 0.8; stroke-linejoin: round; }
+.band { stroke: none; transition: fill-opacity 450ms ease; }
+.ring-line { fill: none; stroke: var(--ink); stroke-opacity: 0.4; stroke-width: 0.6; transition: stroke-opacity 300ms, stroke-width 300ms; }
+.ring-line.is-active { stroke-opacity: 1; stroke-width: 2.2; }
+.route { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.route-casing { fill: none; stroke: var(--land); stroke-width: 7.5; stroke-linecap: round; stroke-linejoin: round; opacity: 0.92; }
+.route-casing.ghost { stroke-width: 5.5; opacity: 0.75; }
+.route-ghost { fill: none; stroke-width: 2; stroke-dasharray: 7 5; stroke-linecap: round; opacity: 0.85; }
+.stop { stroke: var(--ink); stroke-width: 1.2; fill: var(--land); }
+.stop.detour { fill: var(--ink); }
+.bagend { fill: var(--blood); stroke: var(--land); stroke-width: 1.5; }
+.label { font-family: "IM Fell English", Georgia, serif; font-size: 14px; fill: var(--ink); paint-order: stroke; stroke: var(--land); stroke-width: 3.6px; stroke-linejoin: round; }
+.place-dot { fill: var(--land); stroke: var(--ink); stroke-width: 1.4; cursor: help; }
+.yours-band { fill-opacity: 0.85; stroke: var(--ink); stroke-opacity: 0.55; stroke-width: 0.6; }
+.profile-area { fill: color-mix(in srgb, var(--ink) 14%, transparent); }
+.profile-line { fill: none; stroke: var(--ink); stroke-width: 1.1; }
+.profile-done { fill: none; stroke-width: 2.2; }
+.profile-tick { stroke: var(--ink-faint); stroke-width: 0.7; stroke-dasharray: 2 2; }
+.profile-text { font-size: 11px; fill: var(--ink-soft); font-family: "IM Fell English SC", Georgia, serif; }
+.profile-axis { font-size: 11px; fill: var(--ink-faint); font-style: italic; }
+.walker { stroke: var(--paper); stroke-width: 1.5; }
+
+@media (max-width: 860px) {
+  .scrolly { grid-template-columns: 1fr; }
+  .stage { height: 56vh; z-index: 4; background: var(--paper); border-right: 0; border-bottom: 1px solid color-mix(in srgb, var(--ink) 30%, transparent); box-shadow: 0 6px 10px -8px color-mix(in srgb, var(--ink) 60%, transparent); }
+  .profile-wrap { height: 72px; padding-bottom: 0.3rem; }
+  .strip-toggle { display: flex; width: max-content; margin: 0.1rem 0.8rem 0.15rem auto; border: 1.5px solid var(--ink); border-radius: 999px; padding: 2px; gap: 2px; }
+  .strip-toggle button { font: inherit; font-size: 0.8rem; color: var(--ink); background: transparent; border: 0; border-radius: 999px; padding: 0.05rem 0.6rem; cursor: pointer; }
+  .strip-toggle button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+  .stage[data-strip="elev"] .legs-wrap, .stage[data-strip="legs"] .profile-wrap { display: none; }
+  .legs-wrap { height: 88px; padding: 0 0.8rem 0.3rem; }
+  .legs-key { font-size: 0.72rem; padding-left: 30px; white-space: nowrap; flex-wrap: nowrap; gap: 0.8rem; }
+  .stage-bar { padding: 0.5rem 0.8rem 0.1rem; }
+  .stage-bar .where { display: none; }
+  .steps { padding: 4vh 1rem 12vh; position: relative; z-index: 1; font-size: 1.02rem; }
+  .step { min-height: 60vh; align-items: center; }
+  .step h2 { font-size: 1.9rem; }
+  .cartouche { padding: 2.2rem 1.4rem 1.8rem; }
+  .opening { min-height: 60vh; }
+  .tabs { gap: 0.3rem 1.2rem; }
+  .tabs a { font-size: 1.1rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
