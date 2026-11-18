@@ -49,6 +49,38 @@ landCoverFriction <- data.frame(
 altitudePenaltyStartM <- 1500   # thin air starts slowing walkers above this
 altitudePenaltyPer1000m <- 0.10 # +10% walking time per 1,000 m above the start
 
+# ---- From 250 m pace to the 5 km cost grid -------------------------------------
+# How each 5 km cell's pace is summarized from its 400 fine cells:
+#   "mean"   every 250 m patch counts equally, cliffs included (the original method)
+#   "median" the middle patch; a few cliffs no longer dominate the cell
+#   "p25"    the 25th percentile; assumes a walker finds the gentler quarter of the cell
+# validateModel.R compares these against cost distance run at the full 250 m,
+# where a cross-country walker can pick their own line. Choose from its results.
+paceAggregate <- "mean"
+aggregatePace <- function(paceFine, method = paceAggregate, fact = coarseFactor) {
+  switch(method,
+    mean = aggregate(paceFine, fact = fact, fun = "mean", na.rm = TRUE),
+    median = aggregate(paceFine, fact = fact, fun = "median", na.rm = TRUE),
+    # quantile is computed in R, so it is much slower than mean or median on the
+    # continent grid; fine for the validation windows
+    p25 = aggregate(paceFine, fact = fact, na.rm = TRUE,
+                    fun = function(v, ...) if (all(is.na(v))) NA_real_ else quantile(v, 0.25, na.rm = TRUE, names = FALSE)),
+    stop("paceAggregate must be \"mean\", \"median\", or \"p25\"")
+  )
+}
+
+# Pace (hours per meter) on the fine grid from elevation and land cover, exactly
+# as both main scripts build it. demFine: elevation in meters, water already NA.
+paceFromDem <- function(demFine, landCover) {
+  grade <- tan(terrain(demFine, v = "slope", unit = "radians"))
+  pace <- (1 / tobler(grade) + 1 / tobler(-grade)) / 2 / 1000  # symmetric Tobler, hours per meter
+  friction <- classify(landCover, cbind(landCoverFriction$class, landCoverFriction$multiplier),
+                       others = defaultFriction)
+  friction <- ifel(is.na(landCover), defaultFriction, friction)
+  altitude <- 1 + altitudePenaltyPer1000m * clamp(demFine - altitudePenaltyStartM, lower = 0, values = TRUE) / 1000
+  pace * friction * altitude
+}
+
 # ---- Rivers as barriers, crossable only at bridge cities -----------------------
 # The rule: every river averaging at least 1,500 cubic meters per second (about
 # 53,000 cubic feet per second) at its mouth is a barrier, within the map's extent.

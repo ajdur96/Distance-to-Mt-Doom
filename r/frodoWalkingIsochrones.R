@@ -134,7 +134,7 @@ altitudeMultiplier <- 1 + altitudePenaltyPer1000m *
 paceFine <- paceFine * frictionFine * altitudeMultiplier
 
 # ---- Aggregate pace (not speed) to the coarse cost grid -------------------
-paceCoarse <- aggregate(paceFine, fact = coarseFactor, fun = "mean", na.rm = TRUE)
+paceCoarse <- aggregatePace(paceFine)  # method set by paceAggregate in modelParams.R
 landFraction <- aggregate(!is.na(paceFine), fact = coarseFactor, fun = "mean")
 paceCoarse <- ifel(landFraction < minLandFraction, NA, paceCoarse)
 

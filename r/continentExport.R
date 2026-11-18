@@ -369,7 +369,7 @@ altitudeMultiplier <- 1 + altitudePenaltyPer1000m *
   clamp(demFine - altitudePenaltyStartM, lower = 0, values = TRUE) / 1000
 paceFine <- paceFine * frictionFine * altitudeMultiplier
 
-paceCoarse <- aggregate(paceFine, fact = coarseFactor, fun = "mean", na.rm = TRUE)
+paceCoarse <- aggregatePace(paceFine)  # method set by paceAggregate in modelParams.R
 landFraction <- aggregate(!is.na(paceFine), fact = coarseFactor, fun = "mean")
 paceCoarse <- ifel(landFraction < minLandFraction, NA, paceCoarse)
 
