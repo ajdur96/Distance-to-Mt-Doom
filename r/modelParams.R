@@ -89,11 +89,16 @@ riverBounds <- list(
   "Red" = c(-101, -91, 30, 35),          # the southern Red, not the Red River of the North
   "Churchill" = c(-66, -60, 52, 54.5)    # Labrador's Churchill, not Manitoba's (1,200)
 )
-# Keep only this stretch of a river (crop to the box). The southern Red is a
-# shallow, braided prairie river above Texarkana, and the upper Snake is bridged
-# often; their size, and their bridge gaps, come downstream: the Red through
-# Louisiana, and the Snake from Hells Canyon to the Columbia.
+# Keep only this stretch of a river (crop to the box). A river's average flow is
+# measured at its mouth; near its source it is far smaller and bridged often.
+# These cuts are deliberately forgiving, keeping most of each river:
+#   - Mississippi from Minneapolis down (above it, a small river bridged often)
+#   - Missouri from Great Falls down (above it, a mountain river with reservoirs)
+#   - Red below Texarkana (above it, a shallow, braided prairie river)
+#   - Snake from Hells Canyon down to the Columbia
 riverClip <- list(
+  "Mississippi" = c(-95, -88.5, 28.5, 45.05),
+  "Missouri" = c(-111.35, -90, 38, 49),
   "Red" = c(-94.1, -91.5, 30.9, 33.9),
   "Snake" = c(-119.2, -116.3, 44.2, 46.8)
 )
@@ -165,7 +170,7 @@ bridgeRows <- function(river, ...) {
 }
 bridges <- rbind(
   bridgeRows("Mississippi",
-    "Bemidji" = c(-94.88, 47.47), "St. Cloud" = c(-94.16, 45.56), "Minneapolis" = c(-93.26, 44.98),
+    "Minneapolis" = c(-93.26, 44.98),
     "La Crosse" = c(-91.24, 43.80), "Dubuque" = c(-90.66, 42.50), "Davenport" = c(-90.58, 41.52),
     "Burlington" = c(-91.10, 40.81), "Quincy" = c(-91.41, 39.93), "St. Louis" = c(-90.18, 38.63),
     "Cape Girardeau" = c(-89.52, 37.31), "Memphis" = c(-90.05, 35.15), "Greenville" = c(-91.06, 33.41),
