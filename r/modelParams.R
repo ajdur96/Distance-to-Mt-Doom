@@ -50,9 +50,13 @@ altitudePenaltyStartM <- 1500   # thin air starts slowing walkers above this
 altitudePenaltyPer1000m <- 0.10 # +10% walking time per 1,000 m above the start
 
 # ---- Rivers as barriers, crossable only at bridge cities -----------------------
-# The rule: every river that carries more water than the Missouri (about 86,000
-# cubic feet per second) is a barrier, within the map's extent. The Mackenzie and
-# Yukon qualify but lie north of the continent map (60 N), so they are left out.
+# The rule: every river averaging at least 1,500 cubic meters per second (about
+# 53,000 cubic feet per second) at its mouth is a barrier, within the map's extent.
+# Such rivers can't be waded, and their bridges are far enough apart to force real
+# detours; smaller rivers are assumed crossable on their many bridges. The floor
+# sits in a natural gap among US rivers, between the Snake (about 1,560) and the
+# Arkansas (about 1,260). The Mackenzie and Yukon qualify but lie north of the
+# continent map (60 N). The Grijalva (about 1,160 on its own) falls just short.
 riverBufferM <- 3000      # river barrier half width, thick enough to stop diagonal leaks
 crossingRadiusKm <- 8     # gap opened in the river barrier at each bridge
 maxBridgeSnapKm <- 25     # a bridge farther than this from its river is dropped
@@ -62,7 +66,18 @@ barrierPatterns <- c(
   "Mississippi" = "^Mississippi$", "Missouri" = "^Missouri$", "Ohio" = "^Ohio$",
   "St. Lawrence" = "Lawrence|Laurent",
   "Columbia" = "^Columbia$", "Fraser" = "^Fraser$", "Atchafalaya" = "^Atchafalaya$",
-  "Niagara" = "^Niagara$", "Detroit" = "^Detroit$", "St. Clair" = "^(St\\.?|Saint) Clair$"
+  "Niagara" = "^Niagara$", "Detroit" = "^Detroit$", "St. Clair" = "^(St\\.?|Saint) Clair$",
+  "Tennessee" = "^Tennessee$", "Red" = "^Red$", "Snake" = "^Snake$",
+  "Ottawa" = "^Ottawa$", "Nelson" = "^Nelson$", "Peace" = "^Peace$", "Slave" = "^Slave$",
+  "Liard" = "^Liard$", "La Grande" = "^La Grande$", "Koksoak" = "^Koksoak$",
+  "Churchill" = "^Churchill$", "Usumacinta" = "^Usumacinta$"
+  # The Mobile and Saguenay come only from hand-drawn lines below: Natural Earth
+  # has no Mobile line, and its "Saguenay" lines are the rivers above Lac Saint-Jean.
+)
+# Natural Earth labels most of the Snake River "Columbia" (from the Tri-Cities to
+# Wyoming). Segments of `from` lying wholly inside `box` are renamed `to`.
+riverRelabel <- list(
+  list(from = "Columbia", to = "Snake", box = c(-119.2, -110, 42, 47.5))
 )
 # Where a name is shared, keep only segments lying wholly inside this box
 # (lon min, lon max, lat min, lat max). Natural Earth labels the Snake River
@@ -70,7 +85,17 @@ barrierPatterns <- c(
 # in Labrador; neither should become a barrier.
 riverBounds <- list(
   "Columbia" = c(-125, -115.5, 45, 53),
-  "Fraser" = c(-125, -118, 48.5, 55)
+  "Fraser" = c(-125, -118, 48.5, 55),
+  "Red" = c(-101, -91, 30, 35),          # the southern Red, not the Red River of the North
+  "Churchill" = c(-66, -60, 52, 54.5)    # Labrador's Churchill, not Manitoba's (1,200)
+)
+# Keep only this stretch of a river (crop to the box). The southern Red is a
+# shallow, braided prairie river above Texarkana, and the upper Snake is bridged
+# often; their size, and their bridge gaps, come downstream: the Red through
+# Louisiana, and the Snake from Hells Canyon to the Columbia.
+riverClip <- list(
+  "Red" = c(-94.1, -91.5, 30.9, 33.9),
+  "Snake" = c(-119.2, -116.3, 44.2, 46.8)
 )
 
 # Lines drawn by hand, (lon, lat) pairs in order downstream.
@@ -111,6 +136,20 @@ handDrawnRivers <- list(
     -91.538, 30.201,  -91.527, 30.159,  -91.483, 30.102,  -91.479, 30.079,  -91.495, 30.034,
     -91.459, 29.969,  -91.467, 29.925,  -91.394, 29.828,  -91.379, 29.785,  -91.347, 29.761,
     -91.254, 29.753,  -91.224, 29.736,  -91.219, 29.691,  -91.253, 29.613)),
+  # The Mobile River: Natural Earth's "Alabama" line below the Tombigbee confluence
+  riverLine("Mobile", "fallback", c(
+    -87.885, 31.156,  -87.945, 31.147,  -87.961, 31.092,  -87.941, 31.076,  -87.961, 31.075,
+    -87.934, 31.073,  -87.960, 31.029,  -87.968, 30.980,  -87.941, 30.950,  -87.984, 30.880,
+    -87.954, 30.844,  -87.957, 30.830,  -88.001, 30.812,  -88.023, 30.785,  -87.989, 30.761,
+    -88.002, 30.747,  -87.995, 30.685)),
+  # The Saguenay fjord from Chicoutimi to the St. Lawrence at Tadoussac, snapped to
+  # Natural Earth's shoreline. Above Chicoutimi it is bridged at several towns.
+  riverLine("Saguenay", "always", c(
+    -71.070, 48.445,  -71.003, 48.452,  -70.945, 48.444,  -70.891, 48.448,  -70.827, 48.432,
+    -70.743, 48.425,  -70.709, 48.401,  -70.670, 48.392,  -70.634, 48.397,  -70.495, 48.375,
+    -70.415, 48.340,  -70.353, 48.327,  -70.323, 48.300,  -70.272, 48.298,  -70.225, 48.268,
+    -70.126, 48.238,  -70.093, 48.235,  -70.060, 48.244,  -69.956, 48.232,  -69.917, 48.216,
+    -69.883, 48.175,  -69.727, 48.141)),
   # Natural Earth has no Detroit River line; drawn by hand along the channel
   riverLine("Detroit", "fallback", c(
     -82.93, 42.34,  -83.04, 42.32,  -83.07, 42.31,  -83.13, 42.20,  -83.14, 42.03))
@@ -162,7 +201,34 @@ bridges <- rbind(
   bridgeRows("Niagara",
     "Buffalo" = c(-78.90, 42.91), "Niagara Falls" = c(-79.07, 43.09), "Lewiston" = c(-79.04, 43.15)),
   bridgeRows("Detroit", "Detroit" = c(-83.07, 42.31)),
-  bridgeRows("St. Clair", "Port Huron" = c(-82.42, 43.00))
+  bridgeRows("St. Clair", "Port Huron" = c(-82.42, 43.00)),
+  bridgeRows("Tennessee",
+    "Knoxville" = c(-83.92, 35.96), "Loudon" = c(-84.33, 35.73), "Chattanooga" = c(-85.31, 35.06),
+    "South Pittsburg" = c(-85.70, 35.01), "Guntersville" = c(-86.30, 34.36), "Decatur" = c(-86.98, 34.62),
+    "Florence" = c(-87.67, 34.79), "Savannah" = c(-88.24, 35.22), "I-40 crossing" = c(-88.02, 35.96),
+    "Paris Landing" = c(-88.08, 36.44), "Kentucky Dam" = c(-88.27, 37.01)),
+  bridgeRows("Mobile", "I-65 (Mount Vernon)" = c(-87.97, 30.98), "Mobile" = c(-88.03, 30.69)),
+  bridgeRows("Red",
+    "Fulton (I-30)" = c(-93.82, 33.61), "Shreveport" = c(-93.74, 32.51), "Coushatta" = c(-93.34, 32.01),
+    "Grand Ecore" = c(-93.06, 31.79), "Alexandria" = c(-92.45, 31.31)),
+  bridgeRows("Snake",
+    "Brownlee Dam" = c(-116.90, 44.84), "Lewiston" = c(-117.03, 46.42), "Central Ferry" = c(-117.79, 46.65),
+    "Lyons Ferry" = c(-118.22, 46.59), "Pasco (mouth)" = c(-119.03, 46.21)),
+  bridgeRows("Ottawa",
+    "Temiscaming" = c(-79.10, 46.72), "Mattawa" = c(-78.70, 46.32), "Rapides-des-Joachims" = c(-77.70, 46.20),
+    "Pembroke" = c(-77.11, 45.83), "Portage-du-Fort" = c(-76.67, 45.59), "Ottawa-Gatineau" = c(-75.70, 45.42),
+    "Hawkesbury" = c(-74.61, 45.62), "Carillon" = c(-74.38, 45.57)),
+  bridgeRows("Saguenay", "Chicoutimi" = c(-71.06, 48.43)),
+  # Remote northern rivers: only the few road crossings (often at dams) exist
+  bridgeRows("Nelson", "Jenpeg" = c(-98.03, 54.53), "Kettle (Gillam)" = c(-94.69, 56.39)),
+  bridgeRows("Peace",
+    "Hudson's Hope" = c(-121.91, 56.03), "Taylor" = c(-120.68, 56.15), "Dunvegan" = c(-118.60, 55.92),
+    "Peace River" = c(-117.29, 56.24), "Fort Vermilion" = c(-116.00, 58.39)),
+  bridgeRows("Liard", "Liard River (Alaska Hwy)" = c(-126.10, 59.42)),
+  bridgeRows("La Grande", "Radisson (LG-2)" = c(-77.50, 53.78)),
+  bridgeRows("Churchill", "Churchill Falls" = c(-64.00, 53.53), "Goose Bay" = c(-60.77, 53.25)),
+  bridgeRows("Usumacinta", "Boca del Cerro" = c(-91.43, 17.43), "Emiliano Zapata" = c(-91.77, 17.74))
+  # The Slave and Koksoak have no bridges.
 )
 
 # ---- River helpers -------------------------------------------------------------
@@ -173,22 +239,42 @@ loadBarrierRivers <- function() {
                           category = "physical", returnclass = "sf"))
   matches <- sapply(barrierPatterns, function(pattern) grepl(pattern, raw$name, ignore.case = TRUE))
   found <- colSums(matches)
+  handOnly <- setdiff(vapply(handDrawnRivers, `[[`, "", "river"), names(found))
+  found[handOnly] <- 0
   isBarrier <- rowSums(matches) > 0
   rivers <- raw[isBarrier]
   rivers$river <- names(barrierPatterns)[apply(matches[isBarrier, , drop = FALSE], 1, which.max)]
   rivers <- rivers[, "river"]
+  whollyInside <- function(i, b) {
+    e <- as.vector(ext(rivers[i]))
+    e[["xmin"]] >= b[1] && e[["xmax"]] <= b[2] && e[["ymin"]] >= b[3] && e[["ymax"]] <= b[4]
+  }
+  for (rl in riverRelabel) {
+    hit <- which(rivers$river == rl$from)
+    hit <- hit[vapply(hit, whollyInside, logical(1), b = rl$box)]
+    if (length(hit)) {
+      rivers$river[hit] <- rl$to
+      found[[rl$from]] <- found[[rl$from]] - length(hit)
+      found[[rl$to]] <- found[[rl$to]] + length(hit)
+      message(sprintf("Renamed %d segment(s) labelled %s to %s", length(hit), rl$from, rl$to))
+    }
+  }
   for (r in names(riverBounds)) {
     b <- riverBounds[[r]]
     named <- which(rivers$river == r)
-    inside <- vapply(named, function(i) {
-      e <- as.vector(ext(rivers[i]))
-      e[["xmin"]] >= b[1] && e[["xmax"]] <= b[2] && e[["ymin"]] >= b[3] && e[["ymax"]] <= b[4]
-    }, logical(1))
+    inside <- vapply(named, whollyInside, logical(1), b = b)
     if (any(!inside)) {
       message(sprintf("Skipped %d segment(s) named %s outside its expected area", sum(!inside), r))
       rivers <- rivers[-named[!inside]]
       found[[r]] <- found[[r]] - sum(!inside)
     }
+  }
+  for (r in names(riverClip)) {
+    b <- riverClip[[r]]
+    kept <- crop(rivers[rivers$river == r], ext(b[1], b[2], b[3], b[4]))
+    rivers <- rbind(rivers[rivers$river != r], kept)
+    found[[r]] <- nrow(kept)
+    message(sprintf("Kept the %s only between %.1f and %.1f W", r, -b[2], -b[1]))
   }
   for (h in handDrawnRivers) {
     if (h$use == "fallback" && found[[h$river]] > 0) next
@@ -196,7 +282,7 @@ loadBarrierRivers <- function() {
     line$river <- h$river
     rivers <- rbind(rivers, line)
     message(sprintf("Added hand-drawn line for the %s (%s)", h$river,
-                    if (h$use == "always") "extends Natural Earth" else "not in Natural Earth"))
+                    if (found[[h$river]] > 0) "extends Natural Earth" else "not in Natural Earth"))
     found[[h$river]] <- found[[h$river]] + 1
   }
   message("Barrier river segments: ", paste(names(found), found, sep = " = ", collapse = ", "))
