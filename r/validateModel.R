@@ -87,9 +87,10 @@ walkingHours <- function(pace, originXY) {
 landV <- makeValid(vect(ne_download(scale = 10, type = "land", category = "physical", returnclass = "sf")))
 lakesV <- makeValid(vect(ne_download(scale = 10, type = "lakes", category = "physical", returnclass = "sf")))
 
-testWindow <- function(w, demRaw = NULL, landCover = NULL) {
-  crs <- sprintf("+proj=aeqd +lat_0=%f +lon_0=%f +datum=WGS84 +units=m +no_defs", w$lat, w$lon)
-  half <- windowHalfKm * 1000
+# Fine (250 m) pace and elevation on a square around lon/lat, in a local azimuthal projection
+finePace <- function(lon, lat, halfKm, demRaw = NULL, landCover = NULL) {
+  crs <- sprintf("+proj=aeqd +lat_0=%f +lon_0=%f +datum=WGS84 +units=m +no_defs", lat, lon)
+  half <- halfKm * 1000
   template <- rast(ext(-half, half, -half, half), resolution = fineRes, crs = crs)
   areaWgs <- st_transform(st_as_sfc(st_bbox(c(xmin = -half, ymin = -half, xmax = half, ymax = half), crs = st_crs(crs))), 4326)
 
@@ -100,7 +101,13 @@ testWindow <- function(w, demRaw = NULL, landCover = NULL) {
   lakesHere <- crop(lakesV, areaV)
   if (nrow(lakesHere)) demFine <- mask(demFine, rasterize(project(lakesHere, crs), demFine), inverse = TRUE)
   landCover <- if (is.null(landCover)) loadLandCover(demFine) else project(landCover, demFine, method = "near")
-  paceFine <- paceFromDem(demFine, landCover)
+  list(pace = paceFromDem(demFine, landCover), dem = demFine)
+}
+
+testWindow <- function(w, demRaw = NULL, landCover = NULL) {
+  fine <- finePace(w$lon, w$lat, windowHalfKm, demRaw, landCover)
+  paceFine <- fine$pace
+  demFine <- fine$dem
 
   origin <- c(0, 0)
   reference <- walkingHours(paceFine, origin)
@@ -145,6 +152,57 @@ plotResults <- function(results, file) {
   dev.off()
 }
 
+# ---- Grand Canyon crossing test ----------------------------------------------------
+# The Colorado's flow (about 420 m3/s) is far below the 1,500 m3/s barrier rule,
+# but the Grand Canyon has just two footbridges (Phantom Ranch) between Navajo
+# Bridge and Hoover Dam. This asks whether terrain alone already makes the canyon
+# as hard as it really is, at 250 m and at 5 km, and how much a river barrier
+# with a single gap at Phantom Ranch would change the 5 km answer.
+#
+# Benchmark: the corridor trails from the North Kaibab trailhead to the Bright
+# Angel trailhead, about 23.5 miles, take hikers roughly 10-15 hours of walking
+# (North Kaibab 5-7 h, Bright Angel 5-8 h; NPS figures via earthtrekkers.com).
+# Those are graded trails; a cross-country walker should not be faster.
+canyon <- list(
+  center = c(lon = -112.10, lat = 36.14), halfKm = 40,
+  from = c(lon = -112.0570, lat = 36.2168),  # North Kaibab trailhead (North Rim)
+  to = c(lon = -112.1438, lat = 36.0573),    # Bright Angel trailhead (South Rim)
+  bridge = c(lon = -112.0892, lat = 36.1009),  # Black Bridge, Phantom Ranch
+  benchmarkHours = c(10, 15)
+)
+canyonTest <- function(demRaw = NULL, landCover = NULL, riverLine = NULL) {
+  paceFine <- finePace(canyon$center[["lon"]], canyon$center[["lat"]], canyon$halfKm, demRaw, landCover)$pace
+  crs <- crs(paceFine)
+  toXY <- function(p) crds(project(vect(rbind(p), crs = "EPSG:4326"), crs))[1, ]
+  fromXY <- toXY(canyon$from); targetXY <- toXY(canyon$to)
+  hoursAt <- function(pace) extract(walkingHours(pace, fromXY), rbind(targetXY))[1, 1]
+  straightKm <- sqrt(sum((targetXY - fromXY)^2)) / 1000
+
+  rows <- list(data.frame(model = "250 m, terrain only", hours = hoursAt(paceFine)))
+  for (m in methods) {
+    rows[[length(rows) + 1]] <- data.frame(model = paste0("5 km ", m, ", terrain only"),
+                                           hours = hoursAt(aggregatePace(paceFine, method = m)))
+  }
+  # Option B preview: the Colorado as a barrier, open only at Phantom Ranch
+  if (is.null(riverLine)) {
+    nr <- ne_download(scale = 10, type = "rivers_lake_centerlines", category = "physical", returnclass = "sf")
+    riverLine <- vect(nr[nr$name %in% "Colorado", ])
+  }
+  riverHere <- crop(project(riverLine, crs), ext(paceFine))
+  paceMean <- aggregatePace(paceFine, method = paceAggregate)
+  barrier <- !is.na(rasterize(buffer(riverHere, riverBufferM), paceMean, touches = TRUE))
+  gap <- !is.na(rasterize(buffer(vect(rbind(toXY(canyon$bridge)), crs = crs), crossingRadiusKm * 1000),
+                          paceMean, touches = TRUE))
+  rows[[length(rows) + 1]] <- data.frame(model = paste0("5 km ", paceAggregate, ", river barrier + Phantom Ranch gap"),
+                                         hours = hoursAt(ifel(barrier & !gap, NA, paceMean)))
+  out <- do.call(rbind, rows)
+  out$hours <- round(out$hours, 1)
+  out$flatEquivalentKm <- round(out$hours * flatSpeedKmh, 1)
+  out$straightLineKm <- round(straightKm, 1)
+  out$benchmarkHours <- paste(canyon$benchmarkHours, collapse = "-")
+  out
+}
+
 # ---- Run ---------------------------------------------------------------------------
 if (!exists("validateNoRun")) {
   results <- do.call(rbind, lapply(seq_len(nrow(windows)), function(i) {
@@ -159,4 +217,11 @@ if (!exists("validateNoRun")) {
   print(overall)
   message("Best match: ", overall$method[which.min(overall$meanAbsErrorPct)],
           ". Set paceAggregate in modelParams.R to it, and rerun the main scripts.")
+
+  message("\nGrand Canyon crossing, North Kaibab trailhead to Bright Angel trailhead:")
+  canyonResults <- canyonTest()
+  write.csv(canyonResults, file.path(valDir, "grandCanyonTest.csv"), row.names = FALSE)
+  print(canyonResults, row.names = FALSE)
+  message("If the terrain-only 5 km hours fall well under the ", paste(canyon$benchmarkHours, collapse = "-"),
+          " h benchmark, the 5 km grid is smoothing the canyon away: a case for the Colorado barrier.")
 }

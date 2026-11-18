@@ -38,11 +38,15 @@ milestones <- data.frame(
   # 45, 105, 190, 390, 440, 535, 765, 830, 985, 1000, 1030 miles.)
   meGisRawMi = c(25.6, 49.2, 101.6, 229.1, 241.5, 285.2, 399.0, 425.5, 478.3, 485.6, 501.7)
 )
-# ME-GIS stores Middle-earth in meters at about half of Tolkien's scale. Every
-# leg stays consistent with the book from x1.71 up; Heiss and Fonstad use x2.0.
-# Set this from your georeferenced scale bar on Tolkien's map.
-middleEarthScale <- 1.85            # placeholder until the scale bar is measured
-middleEarthScaleRange <- c(1.71, 2.0)  # for the uncertainty bands; narrow it after measuring
+# ME-GIS stores Middle-earth in meters at about half of Tolkien's scale. A leg's
+# straight line can't be longer than the walk (legKm), and Weathertop to
+# Rivendell sets the ceiling: 350 km walked over 205 raw km, so x1.71 at most
+# (and even that means a dead-straight road). Heiss and Fonstad use x2.0, which
+# breaks that leg, so the two sources disagree somewhere.
+# Set this from your georeferenced scale bar on Tolkien's map; if the bar says
+# about 2.0, recheck the Rivendell leg distance rather than the scale.
+middleEarthScale <- 1.85            # placeholder until the scale bar is measured (above the x1.71 ceiling)
+middleEarthScaleRange <- c(1.71, 2.0)  # ceiling to Heiss/Fonstad, for the uncertainty bands; narrow it after measuring
 milestones$displacementMi <- milestones$meGisRawMi * middleEarthScale
 if (!includeBoatLeg) milestones$legKm[milestones$legMode == "boat"] <- 0
 milestones$cumKm <- cumsum(milestones$legKm)
