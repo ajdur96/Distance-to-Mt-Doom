@@ -99,7 +99,7 @@ testWindow <- function(w, demRaw = NULL, landCover = NULL) {
   demFine <- mask(demFine, rasterize(project(crop(landV, areaV), crs), demFine))
   lakesHere <- crop(lakesV, areaV)
   if (nrow(lakesHere)) demFine <- mask(demFine, rasterize(project(lakesHere, crs), demFine), inverse = TRUE)
-  landCover <- project(if (is.null(landCover)) rast(landCoverPath) else landCover, demFine, method = "near")
+  landCover <- if (is.null(landCover)) loadLandCover(demFine) else project(landCover, demFine, method = "near")
   paceFine <- paceFromDem(demFine, landCover)
 
   origin <- c(0, 0)

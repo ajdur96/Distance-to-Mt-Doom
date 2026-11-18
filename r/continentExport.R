@@ -358,16 +358,9 @@ demFine <- mask(demFine, rasterize(landL, demFine))
 demFine <- mask(demFine, rasterize(lakesL, demFine), inverse = TRUE)
 
 # ---- Walking pace: slope, land cover, altitude ------------------------------
-grade <- tan(terrain(demFine, v = "slope", unit = "radians"))
-paceFine <- (1 / tobler(grade) + 1 / tobler(-grade)) / 2 / 1000  # hours per meter
-# landCoverFriction and defaultFriction come from modelParams.R, with sources
-landCover <- project(rast(landCoverPath), demFine, method = "near")
-frictionFine <- classify(landCover, cbind(landCoverFriction$class, landCoverFriction$multiplier),
-                         others = defaultFriction)
-frictionFine <- ifel(is.na(landCover), defaultFriction, frictionFine)
-altitudeMultiplier <- 1 + altitudePenaltyPer1000m *
-  clamp(demFine - altitudePenaltyStartM, lower = 0, values = TRUE) / 1000
-paceFine <- paceFine * frictionFine * altitudeMultiplier
+# All three pieces come from modelParams.R, with sources
+landCover <- loadLandCover(demFine)  # NALCMS 2020, prepared by prepLandCover2020.R
+paceFine <- paceFromDem(demFine, landCover)
 
 paceCoarse <- aggregatePace(paceFine)  # method set by paceAggregate in modelParams.R
 landFraction <- aggregate(!is.na(paceFine), fact = coarseFactor, fun = "mean")

@@ -23,6 +23,7 @@ outDir <- "frodoOutputs"
 ringBasis <- "displacement"  # "displacement" = how far from home; "walked" = cumulative distance walked
 useRoads <- FALSE         # TRUE runs the road variant and writes to frodoOutputsRoads
 roadGradeCap <- 0.07      # roads switchback, so walkers on them never face more than ~7% grade
+runUncertainty <- FALSE   # TRUE adds probability bands around each ring (uncertaintyBands.R; slow)
 
 milestones <- data.frame(
   name = c("Bucklebury", "Bree", "Weathertop", "Rivendell", "Moria",
@@ -30,10 +31,19 @@ milestones <- data.frame(
            "Cirith Ungol", "Mount Doom"),
   legKm = c(115, 100, 170, 350, 550, 195, 625, 255, 280, 35, 190),
   legMode = c(rep("walk", 6), "boat", rep("walk", 4)),
-  # Straight-line distance from Hobbiton in Middle-earth, in miles. Claude's
-  # rough estimates from Tolkien's map grid (+/- 10-15%); verify and replace.
-  displacementMi = c(45, 105, 190, 390, 440, 535, 765, 830, 985, 1000, 1030)
+  # Straight-line distance from Hobbiton, measured in the ME-GIS project's
+  # shapefiles (github.com/andrewheiss/me-gis) before scaling. Moria is the
+  # East-gate (Dimrill Stair), Lothlorien is Caras Galadhon, Amon Hen is at Rauros.
+  # (Before November 2026: rough estimates off Tolkien's map grid,
+  # 45, 105, 190, 390, 440, 535, 765, 830, 985, 1000, 1030 miles.)
+  meGisRawMi = c(25.6, 49.2, 101.6, 229.1, 241.5, 285.2, 399.0, 425.5, 478.3, 485.6, 501.7)
 )
+# ME-GIS stores Middle-earth in meters at about half of Tolkien's scale. Every
+# leg stays consistent with the book from x1.71 up; Heiss and Fonstad use x2.0.
+# Set this from your georeferenced scale bar on Tolkien's map.
+middleEarthScale <- 1.85            # placeholder until the scale bar is measured
+middleEarthScaleRange <- c(1.71, 2.0)  # for the uncertainty bands; narrow it after measuring
+milestones$displacementMi <- milestones$meGisRawMi * middleEarthScale
 if (!includeBoatLeg) milestones$legKm[milestones$legMode == "boat"] <- 0
 milestones$cumKm <- cumsum(milestones$legKm)
 milestones <- milestones[!duplicated(milestones$cumKm), ]  # drops Amon Hen if no boat leg
@@ -115,23 +125,12 @@ message(sprintf("Land polygons: %d, lake polygons: %d, Atlantic probe: %s, Lake 
                 nrow(landV), nrow(lakesV), probeValues[1], probeValues[2]))
 if (any(!is.na(probeValues))) stop("Water mask did not apply: a water probe is still walkable.")
 
-# ---- Slope to pace at fine resolution ------------------------------------
-# Symmetric Tobler: average of uphill and downhill pace, since costDist is isotropic.
-grade <- tan(terrain(demFine, v = "slope", unit = "radians"))
-paceFine <- (1 / tobler(grade) + 1 / tobler(-grade)) / 2 / 1000  # hours per meter
-
-# ---- Land cover friction (NALCMS 19 classes) -----------------------------
-# landCoverFriction and defaultFriction come from modelParams.R, with sources.
-landCover <- project(rast(landCoverPath), demFine, method = "near")
-frictionFine <- classify(landCover, cbind(landCoverFriction$class, landCoverFriction$multiplier),
-                         others = defaultFriction)
-frictionFine <- ifel(is.na(landCover), defaultFriction, frictionFine)  # gaps get the default; water stays NA
-
-# ---- Altitude penalty ------------------------------------------------------
-altitudeMultiplier <- 1 + altitudePenaltyPer1000m *
-  clamp(demFine - altitudePenaltyStartM, lower = 0, values = TRUE) / 1000
-
-paceFine <- paceFine * frictionFine * altitudeMultiplier
+# ---- Pace at fine resolution: slope x land cover x altitude ---------------
+# Each piece comes from modelParams.R (sources there). The pieces are kept, since
+# the optional uncertainty bands at the end vary them.
+slopePaceFine <- slopePace(demFine)       # symmetric Tobler, hours per meter
+landCover <- loadLandCover(demFine)       # NALCMS 2020, prepared by prepLandCover2020.R
+paceFine <- slopePaceFine * frictionFromLandCover(landCover) * altitudeMultiplier(demFine)
 
 # ---- Aggregate pace (not speed) to the coarse cost grid -------------------
 paceCoarse <- aggregatePace(paceFine)  # method set by paceAggregate in modelParams.R
@@ -161,8 +160,7 @@ if (useRoads) {
   demCoarse <- aggregate(demFine, fact = coarseFactor, fun = "mean", na.rm = TRUE)
   roadGrade <- clamp(tan(terrain(demCoarse, v = "slope", unit = "radians")),
                      upper = roadGradeCap, values = TRUE)
-  altitudeCoarse <- 1 + altitudePenaltyPer1000m *
-    clamp(demCoarse - altitudePenaltyStartM, lower = 0, values = TRUE) / 1000
+  altitudeCoarse <- altitudeMultiplier(demCoarse)
   roadPace <- (1 / tobler(roadGrade) + 1 / tobler(-roadGrade)) / 2 / 1000 * altitudeCoarse
 
   # Only improve cells that are already walkable, so roads never reopen rivers or lakes
@@ -1121,3 +1119,6 @@ jsonlite::write_json(list(
 webFiles <- list.files(webDir, full.names = TRUE)
 message(sprintf("Web export: %d files, %.1f MB total, in %s",
                 length(webFiles), sum(file.size(webFiles)) / 1e6, normalizePath(webDir)))
+
+# ---- Optional: uncertainty bands around each ring ------------------------------
+if (runUncertainty) source(file.path(dirname(modelParamsPath), "uncertaintyBands.R"))

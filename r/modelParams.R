@@ -7,7 +7,25 @@
 # Needs terra, sf, and rnaturalearth loaded first (both scripts do this).
 
 # ---- Paths and grid ----------------------------------------------------------
-landCoverPath <- "C:/Users/avery/Downloads/land_cover_2010v2_250m_tif/NA_NALCMS_landcover_2010v2_250m/data/NA_NALCMS_landcover_2010v2_250m.tif"
+# Land cover: NALCMS 2020 (30 m, released 2023), reduced once to 240 m by
+# prepLandCover2020.R. Download the 30 m file from
+# https://www.cec.org/north-american-environmental-atlas/land-cover-30m-2020/
+# and set landCoverRawPath to it before running prepLandCover2020.R.
+landCoverRawPath <- "C:/Users/avery/Downloads/NA_NALCMS_landcover_2020_30m/data/NA_NALCMS_landcover_2020_30m.tif"
+landCoverPath <- file.path("frodoOutputs", "landCover2020_240m.tif")
+# The 2010 250 m file the map was first built with, kept as a fallback
+landCover2010Path <- "C:/Users/avery/Downloads/land_cover_2010v2_250m_tif/NA_NALCMS_landcover_2010v2_250m/data/NA_NALCMS_landcover_2010v2_250m.tif"
+
+# Land cover on a run's fine grid (nearest class, never averaged)
+loadLandCover <- function(template) {
+  path <- landCoverPath
+  if (!file.exists(path)) {
+    warning("No prepared 2020 land cover at ", path, "; run prepLandCover2020.R. ",
+            "Falling back to the 2010 file.", call. = FALSE)
+    path <- landCover2010Path
+  }
+  project(rast(path), template, method = "near")
+}
 demZoom <- 8              # terrain tile zoom; finer than fineRes at these latitudes
 fineRes <- 250            # meters; resolution used for slope, land cover, and altitude
 coarseFactor <- 20        # 250 m x 20 = 5 km cost grid
@@ -46,8 +64,22 @@ landCoverFriction <- data.frame(
                  1.4, 1.3, 1.3, 1.8, 1.1, 1.2, 1.0, NA, 2.0)
 )
 
-altitudePenaltyStartM <- 1500   # thin air starts slowing walkers above this
-altitudePenaltyPer1000m <- 0.10 # +10% walking time per 1,000 m above the start
+# Altitude: thinner air lowers aerobic capacity, so a walker holding the same
+# effort moves more slowly. Two measured results set the rule:
+#   - Wehrlin, J.P., and Hallen, J. (2006), Linear decrease in VO2max and
+#     performance with increasing altitude in endurance athletes, European Journal
+#     of Applied Physiology 96:404-412. VO2max fell about 6.3% per 1,000 m
+#     (4.6-7.5% across individuals), already measurable by 800 m.
+#   - Fulco, C.S., Rock, P.B., and Cymerman, A. (1998), Maximal and submaximal
+#     exercise performance at altitude, Aviation, Space, and Environmental
+#     Medicine 69:793-801. A review: VO2max losses begin at about 580 m.
+# Walking time is taken to rise in step with that capacity loss.
+# (Before November 2026: start 1,500 m, +10% per 1,000 m, the author's guess.)
+altitudePenaltyStartM <- 600     # losses begin about here
+altitudePenaltyPer1000m <- 0.063 # +6.3% walking time per 1,000 m above the start
+altitudeMultiplier <- function(dem, rate = altitudePenaltyPer1000m, start = altitudePenaltyStartM) {
+  1 + rate * clamp(dem - start, lower = 0, values = TRUE) / 1000
+}
 
 # ---- From 250 m pace to the 5 km cost grid -------------------------------------
 # How each 5 km cell's pace is summarized from its 400 fine cells:
@@ -71,14 +103,18 @@ aggregatePace <- function(paceFine, method = paceAggregate, fact = coarseFactor)
 
 # Pace (hours per meter) on the fine grid from elevation and land cover, exactly
 # as both main scripts build it. demFine: elevation in meters, water already NA.
-paceFromDem <- function(demFine, landCover) {
+# The pieces are separate so uncertaintyBands.R can vary each one.
+slopePace <- function(demFine) {
   grade <- tan(terrain(demFine, v = "slope", unit = "radians"))
-  pace <- (1 / tobler(grade) + 1 / tobler(-grade)) / 2 / 1000  # symmetric Tobler, hours per meter
-  friction <- classify(landCover, cbind(landCoverFriction$class, landCoverFriction$multiplier),
-                       others = defaultFriction)
-  friction <- ifel(is.na(landCover), defaultFriction, friction)
-  altitude <- 1 + altitudePenaltyPer1000m * clamp(demFine - altitudePenaltyStartM, lower = 0, values = TRUE) / 1000
-  pace * friction * altitude
+  (1 / tobler(grade) + 1 / tobler(-grade)) / 2 / 1000  # symmetric Tobler, hours per meter
+}
+frictionFromLandCover <- function(landCover, multipliers = landCoverFriction$multiplier,
+                                  default = defaultFriction) {
+  friction <- classify(landCover, cbind(landCoverFriction$class, multipliers), others = default)
+  ifel(is.na(landCover), default, friction)  # gaps get the default; water comes from the DEM mask
+}
+paceFromDem <- function(demFine, landCover) {
+  slopePace(demFine) * frictionFromLandCover(landCover) * altitudeMultiplier(demFine)
 }
 
 # ---- Rivers as barriers, crossable only at bridge cities -----------------------
@@ -90,8 +126,23 @@ paceFromDem <- function(demFine, landCover) {
 # Arkansas (about 1,260). The Mackenzie and Yukon qualify but lie north of the
 # continent map (60 N). The Grijalva (about 1,160 on its own) falls just short.
 riverBufferM <- 3000      # river barrier half width, thick enough to stop diagonal leaks
-crossingRadiusKm <- 8     # gap opened in the river barrier at each bridge
-maxBridgeSnapKm <- 25     # a bridge farther than this from its river is dropped
+crossingRadiusKm <- 5     # gap opened at each OpenStreetMap crossing (located exactly);
+                          # 4 km left some crossings shut on the 5 km grid, 5 km opened all
+handCrossingRadiusKm <- 8 # wider gap at hand-listed city points, which are approximate
+maxBridgeSnapKm <- 25     # a crossing farther than this from its river is dropped
+
+# Real crossings. fetchCrossings.R finds every bridge and ferry in OpenStreetMap
+# that crosses a barrier river and writes them to crossingsPath. Without that
+# file, the hand-listed bridge cities below are used, plus Natural Earth ferries.
+crossingsPath <- file.path("frodoOutputs", "crossings", "osmCrossings.csv")
+crossingCrs <- "+proj=laea +lat_0=45 +lon_0=-100 +R=6371007.181 +units=m +no_defs"
+minCrossingLengthM <- 200 # shorter bridges span creeks and side channels, not these rivers
+maxFerryLengthKm <- 30    # longer "ferries" are coastal or cruise routes
+riverMatchM <- 1500       # how far Natural Earth's line may sit from the real channel
+mergeCrossingsKm <- 2     # twin spans and nearby bridges count as one crossing
+handKeepKm <- 10          # a hand-listed bridge is kept if OSM has nothing this close
+                          # (dam-top roads are rarely tagged as bridges)
+ferryWaitHours <- 1       # waiting for and riding a ferry, versus walking a bridge
 
 # Natural Earth 10 m river names to match (rivers_lake_centerlines$name)
 barrierPatterns <- c(
@@ -330,17 +381,134 @@ loadBarrierRivers <- function() {
   rivers
 }
 
-# Cut the barrier rivers into a cost grid, opening a gap at each bridge city.
+# ---- Crossings: bridges and ferries ---------------------------------------------
+# Which of `linesSf` (OSM bridge or ferry ways, sf, WGS84, with `name` and `osmId`
+# columns) actually cross a barrier river. A line counts when it is long enough
+# and its end-to-end chord, stretched by riverMatchM at both ends, cuts the river
+# line. That keeps bridges across the river and drops long viaducts running
+# alongside it. Returns one row per line and river crossed.
+findRiverCrossings <- function(linesSf, riversWgs, type) {
+  empty <- data.frame(name = character(), river = character(), lon = numeric(), lat = numeric(),
+                      type = character(), lengthM = numeric(), osmId = character())
+  if (!nrow(linesSf)) return(empty)
+  lines <- st_transform(linesSf, crossingCrs)
+  lines$lengthM <- as.numeric(st_length(lines))
+  keep <- lines$lengthM >= minCrossingLengthM
+  if (type == "ferry") keep <- keep & lines$lengthM <= maxFerryLengthKm * 1000
+  lines <- lines[keep, ]
+  if (!nrow(lines)) return(empty)
+  riversSf <- st_transform(st_as_sf(riversWgs), crossingCrs)
+  ends <- t(vapply(st_geometry(lines), function(g) {
+    xy <- st_coordinates(g)[, 1:2, drop = FALSE]
+    c(xy[1, ], xy[nrow(xy), ])
+  }, numeric(4)))
+  chordM <- sqrt((ends[, 3] - ends[, 1])^2 + (ends[, 4] - ends[, 2])^2)
+  out <- list()
+  for (r in unique(riversSf$river)) {
+    riverU <- st_union(riversSf[riversSf$river == r, ])
+    near <- which(lengths(st_is_within_distance(lines, riverU, riverMatchM)) > 0 & chordM > 50)
+    if (!length(near)) next
+    stretched <- st_sfc(lapply(near, function(i) {
+      mid <- (ends[i, 1:2] + ends[i, 3:4]) / 2
+      dir <- (ends[i, 3:4] - ends[i, 1:2]) / chordM[i]
+      half <- chordM[i] / 2 + riverMatchM
+      st_linestring(rbind(mid - dir * half, mid + dir * half))
+    }), crs = crossingCrs)
+    # Both stretched ends must also sit well off the river; a road running along
+    # the bank (or a shallow-angle near miss) has ends close to the line
+    endsOff <- vapply(stretched, function(g) {
+      xy <- st_coordinates(g)[, 1:2]
+      min(as.numeric(st_distance(st_sfc(st_point(xy[1, ]), st_point(xy[2, ]), crs = crossingCrs), riverU)))
+    }, numeric(1))
+    hit <- lengths(st_intersects(stretched, riverU)) > 0 & endsOff >= riverMatchM / 2
+    if (!any(hit)) next
+    idx <- near[hit]
+    mids <- st_sfc(lapply(idx, function(i) st_point((ends[i, 1:2] + ends[i, 3:4]) / 2)), crs = crossingCrs)
+    onRiver <- st_cast(st_nearest_points(mids, riverU), "POINT")[c(FALSE, TRUE)]
+    ll <- st_coordinates(st_transform(onRiver, 4326))
+    out[[r]] <- data.frame(name = lines$name[idx], river = r, lon = ll[, 1], lat = ll[, 2],
+                           type = type, lengthM = round(lines$lengthM[idx]), osmId = lines$osmId[idx])
+  }
+  if (!length(out)) return(empty)
+  do.call(rbind, unname(out))
+}
+
+# Crossings of the same river and type closer than mergeCrossingsKm become one.
+mergeCrossings <- function(df) {
+  if (nrow(df) < 2) return(df)
+  xy <- st_coordinates(st_transform(st_as_sf(df, coords = c("lon", "lat"), crs = 4326), crossingCrs))
+  groups <- split(seq_len(nrow(df)), paste(df$river, df$type))
+  merged <- lapply(groups, function(g) {
+    cluster <- if (length(g) > 1) cutree(hclust(dist(xy[g, , drop = FALSE]), "single"),
+                                         h = mergeCrossingsKm * 1000) else 1
+    do.call(rbind, lapply(split(g, cluster), function(k) {
+      center <- colMeans(xy[k, , drop = FALSE])
+      rep <- k[which.min(colSums((t(xy[k, , drop = FALSE]) - center)^2))]
+      named <- df$name[k][!is.na(df$name[k]) & nzchar(df$name[k])]
+      row <- df[rep, ]
+      row$name <- if (length(named)) names(sort(table(named), decreasing = TRUE))[1] else
+        paste("Unnamed", df$type[rep])
+      row$spans <- length(k)
+      row$osmId <- paste(df$osmId[k], collapse = ";")
+      row
+    }))
+  })
+  out <- do.call(rbind, unname(merged))
+  rownames(out) <- NULL
+  out
+}
+
+# The crossings a run uses: OpenStreetMap's when fetchCrossings.R has been run,
+# plus any hand-listed bridge OSM missed; otherwise the hand list and Natural
+# Earth's ferry routes.
+loadCrossings <- function(riversWgs) {
+  hand <- data.frame(bridges[, c("name", "river", "lon", "lat")], type = "bridge",
+                     source = "hand list")
+  if (file.exists(crossingsPath)) {
+    osm <- read.csv(crossingsPath, stringsAsFactors = FALSE)
+    osm$source <- "OpenStreetMap"
+    osmV <- st_as_sf(osm, coords = c("lon", "lat"), crs = 4326)
+    handV <- st_as_sf(hand, coords = c("lon", "lat"), crs = 4326)
+    covered <- vapply(seq_len(nrow(hand)), function(i) {
+      same <- osmV[osmV$river == hand$river[i], ]
+      nrow(same) > 0 && min(as.numeric(st_distance(handV[i, ], same))) <= handKeepKm * 1000
+    }, logical(1))
+    if (any(!covered)) {
+      message("Hand-listed bridges kept because OSM has no crossing within ", handKeepKm, " km: ",
+              paste(sprintf("%s (%s)", hand$name[!covered], hand$river[!covered]), collapse = ", "))
+    }
+    out <- rbind(osm[, c("name", "river", "lon", "lat", "type", "source")], hand[!covered, ])
+  } else {
+    warning("No ", crossingsPath, "; using hand-listed bridge cities and Natural Earth ferries. ",
+            "Run fetchCrossings.R for real bridge locations.", call. = FALSE)
+    roads <- ne_download(scale = 10, type = "roads", category = "cultural", returnclass = "sf")
+    ferries <- roads[grepl("ferry", roads$type, ignore.case = TRUE), ]
+    ferries$name <- if ("name" %in% names(ferries)) ferries$name else NA
+    ferries$osmId <- NA_character_
+    ferries <- suppressWarnings(st_cast(st_cast(ferries[, c("name", "osmId")], "MULTILINESTRING"), "LINESTRING"))
+    found <- mergeCrossings(findRiverCrossings(ferries, riversWgs, "ferry"))
+    found$source <- rep("Natural Earth", nrow(found))
+    out <- rbind(hand, found[, c("name", "river", "lon", "lat", "type", "source")])
+  }
+  message(sprintf("Crossings: %d bridges, %d ferries", sum(out$type == "bridge"), sum(out$type == "ferry")))
+  out
+}
+
+# Cut the barrier rivers into a cost grid, opening a gap at each crossing.
 #   paceCoarse: the coarse pace raster (hours per meter), already in `crs`
 #   riversWgs:  output of loadBarrierRivers()
 #   clipWgs:    the area to keep, in WGS84 (a SpatExtent or a SpatVector polygon)
-# Returns the pace raster with rivers as NA, plus the rivers and crossings used.
-applyRiverBarriers <- function(paceCoarse, riversWgs, clipWgs, crs) {
+#   crossingsTable: output of loadCrossings() (read once and reused if given)
+# Returns the pace raster with rivers as NA, the rivers and crossings used, and
+# the two layers uncertaintyBands.R reuses: `blocked` (TRUE on closed river
+# cells) and `ferryAdd` (hours per meter added where a ferry opens the river).
+applyRiverBarriers <- function(paceCoarse, riversWgs, clipWgs, crs,
+                               crossingsTable = loadCrossings(riversWgs)) {
   # Cropping in WGS84 keeps a loose box, so crop again to this run's grid
   rivers <- crop(project(crop(riversWgs, clipWgs), crs), ext(paceCoarse))
   present <- sort(unique(rivers$river))
   message("Barrier rivers in this area: ", paste(present, collapse = ", "))
-  b <- bridges[bridges$river %in% present, ]
+  b <- crossingsTable[crossingsTable$river %in% present, ]
   bridgesV <- project(vect(b, geom = c("lon", "lat"), crs = "EPSG:4326"), crs)
   inGrid <- relate(bridgesV, ext(paceCoarse) + maxBridgeSnapKm * 1000, "intersects")[, 1]
   b <- b[inGrid, ]
@@ -348,25 +516,38 @@ applyRiverBarriers <- function(paceCoarse, riversWgs, clipWgs, crs) {
   riversSf <- st_as_sf(rivers)
   snapXY <- matrix(NA_real_, nrow(b), 2)
   snapDistKm <- rep(NA_real_, nrow(b))
-  for (i in seq_len(nrow(b))) {
-    # Snap to the bridge's own river (so St. Charles snaps to the Missouri, not
-    # the nearby Mississippi)
-    ownRiver <- riversSf[riversSf$river == b$river[i], ]
-    connector <- st_nearest_points(bridgesSf[i, ], st_union(ownRiver))
-    snapXY[i, ] <- st_coordinates(connector)[2, 1:2]
+  for (r in unique(b$river)) {
+    # Snap to the crossing's own river (so St. Charles snaps to the Missouri,
+    # not the nearby Mississippi)
+    i <- which(b$river == r)
+    connector <- st_nearest_points(bridgesSf[i, ], st_union(riversSf[riversSf$river == r, ]))
+    snapXY[i, ] <- t(vapply(connector, function(g) st_coordinates(g)[2, 1:2], numeric(2)))
     snapDistKm[i] <- as.numeric(st_length(connector)) / 1000
   }
   far <- snapDistKm > maxBridgeSnapKm
   if (any(far)) {
-    message("Dropped bridges more than ", maxBridgeSnapKm, " km from their river: ",
+    message("Dropped crossings more than ", maxBridgeSnapKm, " km from their river: ",
             paste(sprintf("%s (%.0f km)", b$name[far], snapDistKm[far]), collapse = ", "))
   }
   crossings <- vect(snapXY[!far, , drop = FALSE], crs = crs)
   crossings$name <- b$name[!far]
   crossings$river <- b$river[!far]
-  barrier <- rasterize(buffer(rivers, riverBufferM), paceCoarse, touches = TRUE)
-  openings <- rasterize(buffer(crossings, crossingRadiusKm * 1000), paceCoarse, touches = TRUE)
-  barrier <- mask(barrier, openings, inverse = TRUE)  # open the bridges
-  list(pace = mask(paceCoarse, barrier, inverse = TRUE),  # rivers become NA barriers
-       rivers = rivers, crossings = crossings)
+  crossings$type <- b$type[!far]
+  crossings$source <- b$source[!far]
+
+  barrier <- !is.na(rasterize(buffer(rivers, riverBufferM), paceCoarse, touches = TRUE))
+  openAt <- function(pts) {
+    if (!nrow(pts)) return(barrier & FALSE)
+    radiusKm <- ifelse(pts$source == "OpenStreetMap", crossingRadiusKm, handCrossingRadiusKm)
+    !is.na(rasterize(buffer(pts, radiusKm * 1000), paceCoarse, touches = TRUE))
+  }
+  bridgeOpen <- openAt(crossings[crossings$type != "ferry"])
+  ferryOpen <- openAt(crossings[crossings$type == "ferry"]) & !bridgeOpen
+  blocked <- barrier & !bridgeOpen & !ferryOpen
+  # The wait is spread over the opened river band a walker must cross. On the
+  # grid that band runs about two buffer widths plus one cell; measured on 24
+  # test crossings, this spread adds close to ferryWaitHours per crossing
+  ferryAdd <- ifel(barrier & ferryOpen, ferryWaitHours / (2 * riverBufferM + res(paceCoarse)[1]), 0)
+  list(pace = ifel(blocked, NA, paceCoarse + ferryAdd),
+       rivers = rivers, crossings = crossings, blocked = blocked, ferryAdd = ferryAdd)
 }
