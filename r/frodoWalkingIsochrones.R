@@ -8,21 +8,17 @@ library(sf)
 library(slippymath)
 library(rnaturalearth)
 
+# The walking model (land cover, altitude, Tobler, rivers, bridges) is shared
+# with continentExport.R and lives in modelParams.R, next to this script.
+modelParamsPath <- Find(file.exists, c("modelParams.R", file.path("r", "modelParams.R")))
+if (is.null(modelParamsPath)) stop("Can't find modelParams.R. Set the working directory to the folder with the R scripts.")
+source(modelParamsPath)
+
 # ---- Parameters ----------------------------------------------------------
 originLon <- -77.0846    # Bag End: 1310 N Courthouse Rd, Arlington (Data Trust office)
 originLat <- 38.8888
-demZoom <- 8              # terrain tile zoom; finer than fineRes at this latitude
-fineRes <- 250            # meters; resolution used for slope, land cover, and altitude
-coarseFactor <- 20        # 250 m x 20 = 5 km cost grid
-landCoverPath <- "C:/Users/avery/Downloads/land_cover_2010v2_250m_tif/NA_NALCMS_landcover_2010v2_250m/data/NA_NALCMS_landcover_2010v2_250m.tif"
-defaultFriction <- 1.3    # used where land cover has no data
-altitudePenaltyStartM <- 1500   # thin air starts slowing walkers above this
-altitudePenaltyPer1000m <- 0.10 # +10% walking time per 1,000 m above the start
-riverBufferM <- 3000      # river barrier half width, thick enough to stop diagonal leaks
-crossingRadiusKm <- 8     # gap opened in the river barrier at each bridge
 studyRadiusKm <- 3000     # must exceed the farthest milestone (2,865 km)
 includeBoatLeg <- TRUE    # Anduin boat leg counted as if walked
-minLandFraction <- 0.5    # coarse cells with less land than this become barriers
 outDir <- "frodoOutputs"
 ringBasis <- "displacement"  # "displacement" = how far from home; "walked" = cumulative distance walked
 useRoads <- FALSE         # TRUE runs the road variant and writes to frodoOutputsRoads
@@ -42,9 +38,7 @@ if (!includeBoatLeg) milestones$legKm[milestones$legMode == "boat"] <- 0
 milestones$cumKm <- cumsum(milestones$legKm)
 milestones <- milestones[!duplicated(milestones$cumKm), ]  # drops Amon Hen if no boat leg
 
-# Tobler's hiking function: grade = rise / run, returns km/h
-tobler <- function(grade) 6 * exp(-3.5 * abs(grade + 0.05))
-flatSpeedKmh <- tobler(0)  # about 5.04 km/h
+# tobler() and flatSpeedKmh come from modelParams.R
 milestones$displacementKm <- milestones$displacementMi * 1.609344
 milestones$ringKm <- if (ringBasis == "displacement") milestones$displacementKm else milestones$cumKm
 milestones$thresholdHours <- milestones$ringKm / flatSpeedKmh
@@ -127,20 +121,7 @@ grade <- tan(terrain(demFine, v = "slope", unit = "radians"))
 paceFine <- (1 / tobler(grade) + 1 / tobler(-grade)) / 2 / 1000  # hours per meter
 
 # ---- Land cover friction (NALCMS 19 classes) -----------------------------
-# Multipliers on walking time relative to open ground. These are judgment-call
-# approximations in the spirit of military terrain coefficients, not measured values.
-landCoverFriction <- data.frame(
-  class = 1:19,
-  label = c("Temperate needleleaf forest", "Taiga needleleaf forest",
-            "Tropical broadleaf evergreen forest", "Tropical broadleaf deciduous forest",
-            "Temperate broadleaf deciduous forest", "Mixed forest",
-            "Tropical shrubland", "Temperate shrubland",
-            "Tropical grassland", "Temperate grassland",
-            "Polar shrub lichen moss", "Polar grass lichen moss", "Polar barren lichen moss",
-            "Wetland", "Cropland", "Barren land", "Urban", "Water", "Snow and ice"),
-  multiplier = c(1.5, 1.6, 2.0, 1.6, 1.4, 1.5, 1.3, 1.3, 1.1, 1.1,
-                 1.4, 1.3, 1.3, 2.5, 1.1, 1.2, 1.0, NA, 2.0)
-)
+# landCoverFriction and defaultFriction come from modelParams.R, with sources.
 landCover <- project(rast(landCoverPath), demFine, method = "near")
 frictionFine <- classify(landCover, cbind(landCoverFriction$class, landCoverFriction$multiplier),
                          others = defaultFriction)
@@ -158,69 +139,13 @@ landFraction <- aggregate(!is.na(paceFine), fact = coarseFactor, fun = "mean")
 paceCoarse <- ifel(landFraction < minLandFraction, NA, paceCoarse)
 
 # ---- Major rivers as barriers, crossable only at bridge cities ------------
-# Each bridge city is snapped to the nearest point on its river, and a gap is
-# opened in the barrier there. Edit this list to add or remove crossings.
-bridges <- data.frame(
-  name = c("Bemidji", "St. Cloud", "Minneapolis", "La Crosse", "Dubuque", "Davenport",
-           "Burlington", "Quincy", "St. Louis", "Cape Girardeau", "Memphis", "Greenville",
-           "Vicksburg", "Natchez", "Baton Rouge", "New Orleans",
-           "Great Falls", "Williston", "Bismarck", "Pierre", "Yankton", "Sioux City",
-           "Omaha", "St. Joseph", "Kansas City", "Jefferson City", "St. Charles",
-           "Pittsburgh", "Wheeling", "Parkersburg", "Huntington", "Portsmouth", "Cincinnati",
-           "Louisville", "Evansville", "Paducah", "Cairo",
-           "Thousand Islands", "Ogdensburg", "Cornwall", "Montreal", "Trois-Rivieres", "Quebec City"),
-  river = c(rep("Mississippi", 16), rep("Missouri", 11), rep("Ohio", 10), rep("St. Lawrence", 6)),
-  lon = c(-94.88, -94.16, -93.26, -91.24, -90.66, -90.58, -91.10, -91.41, -90.18, -89.52,
-          -90.05, -91.06, -90.88, -91.40, -91.19, -90.07,
-          -111.30, -103.62, -100.78, -100.35, -97.40, -96.40, -95.94, -94.85, -94.58, -92.17, -90.48,
-          -80.00, -80.72, -81.56, -82.45, -83.00, -84.51, -85.76, -87.57, -88.60, -89.18,
-          -75.98, -75.49, -74.73, -73.57, -72.55, -71.27),
-  lat = c(47.47, 45.56, 44.98, 43.80, 42.50, 41.52, 40.81, 39.93, 38.63, 37.31,
-          35.15, 33.41, 32.35, 31.56, 30.45, 29.95,
-          47.50, 48.15, 46.81, 44.37, 42.87, 42.50, 41.26, 39.77, 39.10, 38.58, 38.79,
-          40.44, 40.06, 39.27, 38.42, 38.73, 39.10, 38.25, 37.97, 37.08, 37.00,
-          44.35, 44.70, 45.02, 45.50, 46.34, 46.75)
-)
-barrierPatterns <- c("Mississippi" = "^Mississippi$", "Missouri" = "^Missouri$",
-                     "Ohio" = "^Ohio$", "St. Lawrence" = "Lawrence|Laurent")
-
-riversRaw <- vect(ne_download(scale = 10, type = "rivers_lake_centerlines",
-                              category = "physical", returnclass = "sf"))
-riverMatches <- sapply(barrierPatterns, function(pattern) grepl(pattern, riversRaw$name, ignore.case = TRUE))
-message("River segments matched: ",
-        paste(names(barrierPatterns), colSums(riverMatches), sep = " = ", collapse = ", "))
-if (any(colSums(riverMatches) == 0)) stop("A barrier river was not found; check unique(riversRaw$name).")
-isBarrier <- rowSums(riverMatches) > 0
-riversV <- riversRaw[isBarrier]
-riversV$river <- names(barrierPatterns)[apply(riverMatches[isBarrier, , drop = FALSE], 1, which.max)]
-riversV <- project(crop(riversV, vect(studyAreaWgs)), aeqdCrs)
-
-# Snap each bridge to the nearest point on its own river (so St. Charles snaps
-# to the Missouri, not the nearby Mississippi). sf handles this the same way
-# across package versions.
-bridgesSf <- st_as_sf(project(vect(bridges, geom = c("lon", "lat"), crs = "EPSG:4326"), aeqdCrs))
-riversSf <- st_as_sf(riversV)
-snapXY <- matrix(NA_real_, nrow(bridges), 2)
-snapDistKm <- rep(NA_real_, nrow(bridges))
-for (b in seq_len(nrow(bridges))) {
-  ownRiver <- riversSf[riversSf$river == bridges$river[b], ]
-  connector <- st_nearest_points(bridgesSf[b, ], st_union(ownRiver))
-  snapXY[b, ] <- st_coordinates(connector)[2, 1:2]
-  snapDistKm[b] <- as.numeric(st_length(connector)) / 1000
-}
-farBridges <- snapDistKm > 25
-if (any(farBridges)) {
-  message("Dropped bridges more than 25 km from their river: ",
-          paste(sprintf("%s (%.0f km)", bridges$name[farBridges], snapDistKm[farBridges]), collapse = ", "))
-}
-crossingPts <- vect(snapXY[!farBridges, , drop = FALSE], crs = aeqdCrs)
-crossingPts$name <- bridges$name[!farBridges]
-crossingPts$river <- bridges$river[!farBridges]
-
-riverBarrier <- rasterize(buffer(riversV, riverBufferM), paceCoarse, touches = TRUE)
-crossingZones <- rasterize(buffer(crossingPts, crossingRadiusKm * 1000), paceCoarse, touches = TRUE)
-riverBarrier <- mask(riverBarrier, crossingZones, inverse = TRUE)  # open the bridges
-paceCoarse <- mask(paceCoarse, riverBarrier, inverse = TRUE)       # rivers become NA barriers
+# Rivers, bridge cities, and the rules for both live in modelParams.R. Rivers
+# outside this study area (the Columbia, the Fraser) are skipped automatically.
+barrierRivers <- loadBarrierRivers()
+barrierResult <- applyRiverBarriers(paceCoarse, barrierRivers, vect(studyAreaWgs), aeqdCrs)
+paceCoarse <- barrierResult$pace
+riversV <- barrierResult$rivers
+crossingPts <- barrierResult$crossings
 
 # ---- Optional roads variant ----------------------------------------------
 # Roads don't make walking faster than good open ground (Tobler's baseline is

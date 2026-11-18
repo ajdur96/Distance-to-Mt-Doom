@@ -16,20 +16,16 @@ if (!requireNamespace("jsonlite", quietly = TRUE)) stop("Install jsonlite first:
 sf_use_s2(FALSE)  # planar geometry for simple bounding box tests
 options(HTTPUserAgent = "frodoWalkingIsochrones/1.0 (personal mapping project)")
 
+# The walking model (land cover, altitude, Tobler, rivers, bridges) is shared
+# with frodoWalkingIsochrones.R and lives in modelParams.R, next to this script.
+modelParamsPath <- Find(file.exists, c("modelParams.R", file.path("r", "modelParams.R")))
+if (is.null(modelParamsPath)) stop("Can't find modelParams.R. Set the working directory to the folder with the R scripts.")
+source(modelParamsPath)
+
 # ---- Parameters ----------------------------------------------------------
 # Default extent: the contiguous US, southern Canada, and Mexico. Alaska and
 # the Arctic add a lot of processing for very few readers; widen if you like.
 continentBox <- c(xmin = -130, ymin = 14, xmax = -52, ymax = 60)
-demZoom <- 8
-fineRes <- 250
-coarseFactor <- 20        # 250 m x 20 = 5 km grid, same as the Arlington run
-minLandFraction <- 0.5
-landCoverPath <- "C:/Users/avery/Downloads/land_cover_2010v2_250m_tif/NA_NALCMS_landcover_2010v2_250m/data/NA_NALCMS_landcover_2010v2_250m.tif"  # use the path that worked in the main script
-defaultFriction <- 1.3
-altitudePenaltyStartM <- 1500
-altitudePenaltyPer1000m <- 0.10
-riverBufferM <- 3000
-crossingRadiusKm <- 8
 landmarkTileDeg <- 2
 landmarkMinSitelinks <- 3
 landmarksPerCell <- 3     # most notable landmarks kept per 50 km cell, so every region has some
@@ -49,8 +45,7 @@ for (d in c(contDir, webDir, tileDir, wdDir, wpDir, imgDir)) dir.create(d, recur
 # so the browser's D3 projection matches it exactly.
 laeaCrs <- "+proj=laea +lat_0=45 +lon_0=-100 +R=6371007.181 +units=m +no_defs"
 
-tobler <- function(grade) 6 * exp(-3.5 * abs(grade + 0.05))
-flatSpeedKmh <- tobler(0)
+# tobler() and flatSpeedKmh come from modelParams.R
 
 # ---- Small helpers ---------------------------------------------------------
 # Download with libcurl. This works with the HTTPS Wikimedia endpoints
@@ -365,18 +360,7 @@ demFine <- mask(demFine, rasterize(lakesL, demFine), inverse = TRUE)
 # ---- Walking pace: slope, land cover, altitude ------------------------------
 grade <- tan(terrain(demFine, v = "slope", unit = "radians"))
 paceFine <- (1 / tobler(grade) + 1 / tobler(-grade)) / 2 / 1000  # hours per meter
-landCoverFriction <- data.frame(
-  class = 1:19,
-  label = c("Temperate needleleaf forest", "Taiga needleleaf forest",
-            "Tropical broadleaf evergreen forest", "Tropical broadleaf deciduous forest",
-            "Temperate broadleaf deciduous forest", "Mixed forest",
-            "Tropical shrubland", "Temperate shrubland",
-            "Tropical grassland", "Temperate grassland",
-            "Polar shrub lichen moss", "Polar grass lichen moss", "Polar barren lichen moss",
-            "Wetland", "Cropland", "Barren land", "Urban", "Water", "Snow and ice"),
-  multiplier = c(1.5, 1.6, 2.0, 1.6, 1.4, 1.5, 1.3, 1.3, 1.1, 1.1,
-                 1.4, 1.3, 1.3, 2.5, 1.1, 1.2, 1.0, NA, 2.0)
-)
+# landCoverFriction and defaultFriction come from modelParams.R, with sources
 landCover <- project(rast(landCoverPath), demFine, method = "near")
 frictionFine <- classify(landCover, cbind(landCoverFriction$class, landCoverFriction$multiplier),
                          others = defaultFriction)
@@ -390,54 +374,12 @@ landFraction <- aggregate(!is.na(paceFine), fact = coarseFactor, fun = "mean")
 paceCoarse <- ifel(landFraction < minLandFraction, NA, paceCoarse)
 
 # ---- Rivers as barriers, crossable at bridge cities --------------------------
-bridges <- data.frame(
-  name = c("Bemidji", "St. Cloud", "Minneapolis", "La Crosse", "Dubuque", "Davenport",
-           "Burlington", "Quincy", "St. Louis", "Cape Girardeau", "Memphis", "Greenville",
-           "Vicksburg", "Natchez", "Baton Rouge", "New Orleans",
-           "Great Falls", "Williston", "Bismarck", "Pierre", "Yankton", "Sioux City",
-           "Omaha", "St. Joseph", "Kansas City", "Jefferson City", "St. Charles",
-           "Pittsburgh", "Wheeling", "Parkersburg", "Huntington", "Portsmouth", "Cincinnati",
-           "Louisville", "Evansville", "Paducah", "Cairo",
-           "Thousand Islands", "Ogdensburg", "Cornwall", "Montreal", "Trois-Rivieres", "Quebec City"),
-  river = c(rep("Mississippi", 16), rep("Missouri", 11), rep("Ohio", 10), rep("St. Lawrence", 6)),
-  lon = c(-94.88, -94.16, -93.26, -91.24, -90.66, -90.58, -91.10, -91.41, -90.18, -89.52,
-          -90.05, -91.06, -90.88, -91.40, -91.19, -90.07,
-          -111.30, -103.62, -100.78, -100.35, -97.40, -96.40, -95.94, -94.85, -94.58, -92.17, -90.48,
-          -80.00, -80.72, -81.56, -82.45, -83.00, -84.51, -85.76, -87.57, -88.60, -89.18,
-          -75.98, -75.49, -74.73, -73.57, -72.55, -71.27),
-  lat = c(47.47, 45.56, 44.98, 43.80, 42.50, 41.52, 40.81, 39.93, 38.63, 37.31,
-          35.15, 33.41, 32.35, 31.56, 30.45, 29.95,
-          47.50, 48.15, 46.81, 44.37, 42.87, 42.50, 41.26, 39.77, 39.10, 38.58, 38.79,
-          40.44, 40.06, 39.27, 38.42, 38.73, 39.10, 38.25, 37.97, 37.08, 37.00,
-          44.35, 44.70, 45.02, 45.50, 46.34, 46.75)
-)
-barrierPatterns <- c("Mississippi" = "^Mississippi$", "Missouri" = "^Missouri$",
-                     "Ohio" = "^Ohio$", "St. Lawrence" = "Lawrence|Laurent")
-
-riversRaw <- vect(ne_download(scale = 10, type = "rivers_lake_centerlines", category = "physical", returnclass = "sf"))
-riverMatches <- sapply(barrierPatterns, function(pattern) grepl(pattern, riversRaw$name, ignore.case = TRUE))
-isBarrier <- rowSums(riverMatches) > 0
-riversV <- riversRaw[isBarrier]
-riversV$river <- names(barrierPatterns)[apply(riverMatches[isBarrier, , drop = FALSE], 1, which.max)]
-riversV <- project(crop(riversV, boxExt), laeaCrs)
-
-bridgesSf <- st_transform(st_as_sf(bridges, coords = c("lon", "lat"), crs = 4326), laeaCrs)
-riversSf <- st_as_sf(riversV)
-snapXY <- matrix(NA_real_, nrow(bridges), 2); snapDistKm <- rep(NA_real_, nrow(bridges))
-for (b in seq_len(nrow(bridges))) {
-  ownRiver <- riversSf[riversSf$river == bridges$river[b], ]
-  connector <- st_nearest_points(bridgesSf[b, ], st_union(ownRiver))
-  snapXY[b, ] <- st_coordinates(connector)[2, 1:2]
-  snapDistKm[b] <- as.numeric(st_length(connector)) / 1000
-}
-keepBridge <- snapDistKm <= 25
-crossingPts <- vect(snapXY[keepBridge, , drop = FALSE], crs = laeaCrs)
-crossingPts$name <- bridges$name[keepBridge]; crossingPts$river <- bridges$river[keepBridge]
-
-riverBarrier <- rasterize(buffer(riversV, riverBufferM), paceCoarse, touches = TRUE)
-crossingZones <- rasterize(buffer(crossingPts, crossingRadiusKm * 1000), paceCoarse, touches = TRUE)
-riverBarrier <- mask(riverBarrier, crossingZones, inverse = TRUE)
-paceCoarse <- mask(paceCoarse, riverBarrier, inverse = TRUE)
+# Rivers, bridge cities, and the rules for both live in modelParams.R
+barrierRivers <- loadBarrierRivers()
+barrierResult <- applyRiverBarriers(paceCoarse, barrierRivers, boxExt, laeaCrs)
+paceCoarse <- barrierResult$pace
+riversV <- barrierResult$rivers
+crossingPts <- barrierResult$crossings
 
 # ---- Pace grid for the browser -----------------------------------------------
 # One byte per 5 km cell, log scale, 0 = impassable. The scale is clipped at the
