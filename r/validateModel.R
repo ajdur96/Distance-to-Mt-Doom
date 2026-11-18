@@ -203,6 +203,48 @@ canyonTest <- function(demRaw = NULL, landCover = NULL, riverLine = NULL) {
   out
 }
 
+# ---- Maximum slope test ----------------------------------------------------------------
+# Should walls steeper than some angle be unwalkable (maxSlopeDeg)? For each
+# candidate angle this reports:
+#   - the Grand Canyon crossing at 250 m and at 5 km, against the 10-15 h trail
+#     benchmark (a good angle pulls the 5 km hours up toward it), and
+#   - in the rugged test areas, how many sample points become unreachable and how
+#     much slower the rest get at 250 m (a good angle leaves ordinary mountains
+#     walkable; people do cross the Front Range and the Sierra on foot).
+slopeCaps <- c(NA, 30, 35, 40, 45)
+coarseWithWalls <- function(paceFine, demFine, cap) {  # the main scripts' 5 km rule
+  walkable <- aggregate(walkableFine(paceFine, demFine, cap), fact = coarseFactor, fun = "mean", na.rm = TRUE)
+  ifel(walkable < minLandFraction, NA, aggregatePace(paceFine, method = paceAggregate))
+}
+slopeCapTest <- function(canyonDem = NULL, canyonLandCover = NULL, windowDems = NULL, windowLandCover = NULL) {
+  fineC <- finePace(canyon$center[["lon"]], canyon$center[["lat"]], canyon$halfKm, canyonDem, canyonLandCover)
+  crs <- crs(fineC$pace)
+  toXY <- function(p) crds(project(vect(rbind(p), crs = "EPSG:4326"), crs))[1, ]
+  fromXY <- toXY(canyon$from); targetXY <- toXY(canyon$to)
+  canyonRows <- do.call(rbind, lapply(slopeCaps, function(cap) {
+    h <- function(p) round(extract(walkingHours(p, fromXY), rbind(targetXY))[1, 1], 1)
+    data.frame(maxSlopeDeg = cap, canyonHours250m = h(maskSteep(fineC$pace, fineC$dem, cap)),
+               canyonHours5km = h(coarseWithWalls(fineC$pace, fineC$dem, cap)))
+  }))
+  rugged <- which(!grepl("control", windows$name))
+  windowRows <- do.call(rbind, lapply(rugged, function(i) {
+    w <- windows[i, ]
+    fine <- finePace(w$lon, w$lat, windowHalfKm, windowDems[[w$name]], windowLandCover)
+    base <- walkingHours(fine$pace, c(0, 0))
+    pts <- spatSample(base, 400, method = "regular", xy = TRUE, na.rm = TRUE)
+    d <- sqrt(pts$x^2 + pts$y^2) / 1000
+    pts <- pts[d >= sampleMinKm & d <= sampleMaxKm & is.finite(pts[[3]]), ]
+    do.call(rbind, lapply(slopeCaps[!is.na(slopeCaps)], function(cap) {
+      capped <- extract(walkingHours(maskSteep(fine$pace, fine$dem, cap), c(0, 0)), as.matrix(pts[, c("x", "y")]))[, 1]
+      ok <- is.finite(capped)
+      data.frame(area = w$name, maxSlopeDeg = cap,
+                 unreachablePct = round(100 * mean(!ok), 1),
+                 medianSlowerPct = round(100 * median(capped[ok] / pts[[3]][ok] - 1), 1))
+    }))
+  }))
+  list(canyon = canyonRows, areas = windowRows)
+}
+
 # ---- Run ---------------------------------------------------------------------------
 if (!exists("validateNoRun")) {
   results <- do.call(rbind, lapply(seq_len(nrow(windows)), function(i) {
@@ -222,6 +264,14 @@ if (!exists("validateNoRun")) {
   canyonResults <- canyonTest()
   write.csv(canyonResults, file.path(valDir, "grandCanyonTest.csv"), row.names = FALSE)
   print(canyonResults, row.names = FALSE)
+  message("\nMaximum slope test:")
+  slopeResults <- slopeCapTest()
+  write.csv(slopeResults$canyon, file.path(valDir, "slopeCapCanyon.csv"), row.names = FALSE)
+  write.csv(slopeResults$areas, file.path(valDir, "slopeCapAreas.csv"), row.names = FALSE)
+  print(slopeResults$canyon, row.names = FALSE)
+  print(slopeResults$areas, row.names = FALSE)
+  message("Pick the gentlest angle that lifts the Grand Canyon toward ", paste(canyon$benchmarkHours, collapse = "-"),
+          " h while leaving the mountain areas reachable, and set maxSlopeDeg in modelParams.R.")
   message("If the terrain-only 5 km hours fall well under the ", paste(canyon$benchmarkHours, collapse = "-"),
           " h benchmark, the 5 km grid is smoothing the canyon away: a case for the Colorado barrier.")
 }

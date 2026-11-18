@@ -138,7 +138,7 @@ paceFine <- slopePaceFine * frictionFromLandCover(landCover) * altitudeMultiplie
 
 # ---- Aggregate pace (not speed) to the coarse cost grid -------------------
 paceCoarse <- aggregatePace(paceFine)  # method set by paceAggregate in modelParams.R
-landFraction <- aggregate(!is.na(paceFine), fact = coarseFactor, fun = "mean")
+landFraction <- aggregate(walkableFine(paceFine, demFine), fact = coarseFactor, fun = "mean")  # land, minus walls if maxSlopeDeg is set
 paceCoarse <- ifel(landFraction < minLandFraction, NA, paceCoarse)
 
 # ---- Major rivers as barriers, crossable only at bridge cities ------------

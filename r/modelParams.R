@@ -29,7 +29,8 @@ loadLandCover <- function(template) {
 demZoom <- 8              # terrain tile zoom; finer than fineRes at these latitudes
 fineRes <- 250            # meters; resolution used for slope, land cover, and altitude
 coarseFactor <- 20        # 250 m x 20 = 5 km cost grid
-minLandFraction <- 0.5    # coarse cells with less land than this become barriers
+minLandFraction <- 0.5    # coarse cells less walkable than this (water, and walls if
+                          # maxSlopeDeg is set) become barriers
 
 # ---- Walking speed: slope, land cover, altitude ------------------------------
 # Tobler's hiking function: grade = rise / run, returns km/h. This is on-path
@@ -112,6 +113,21 @@ frictionFromLandCover <- function(landCover, multipliers = landCoverFriction$mul
                                   default = defaultFriction) {
   friction <- classify(landCover, cbind(landCoverFriction$class, multipliers), others = default)
   ifel(is.na(landCover), default, friction)  # gaps get the default; water comes from the DEM mask
+}
+# Walls: 250 m cells steeper than maxSlopeDeg can't be walked. On the 5 km grid
+# they keep their (very slow) pace in the cell's average and count against the
+# cell's walkable share, so a cell less than minLandFraction walkable closes.
+# Dropping them from the average instead would make wall cells faster, which the
+# validation caught. NA means off, as in the original model; validateModel.R's
+# slope test is there to pick a value. The 250 m slopes come from roughly 500 m
+# elevation data, so real cliffs show up gentler than they are.
+maxSlopeDeg <- NA
+maskSteep <- function(pace, demFine, maxDeg = maxSlopeDeg) {  # for 250 m runs
+  if (is.na(maxDeg)) return(pace)
+  ifel(terrain(demFine, v = "slope", unit = "degrees") > maxDeg, NA, pace)
+}
+walkableFine <- function(paceFine, demFine, maxDeg = maxSlopeDeg) {  # TRUE on walkable 250 m cells
+  !is.na(maskSteep(paceFine, demFine, maxDeg))
 }
 paceFromDem <- function(demFine, landCover) {
   slopePace(demFine) * frictionFromLandCover(landCover) * altitudeMultiplier(demFine)
