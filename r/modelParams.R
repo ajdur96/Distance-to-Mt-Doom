@@ -6,6 +6,26 @@
 #
 # Needs terra, sf, and rnaturalearth loaded first (both scripts do this).
 
+# ---- Middle-earth distances ---------------------------------------------------
+# Straight-line distance from Hobbiton to each milestone, measured in the ME-GIS
+# project's shapefiles (github.com/andrewheiss/me-gis) before scaling. Moria is
+# the East-gate (Dimrill Stair), Lothlorien is Caras Galadhon, Amon Hen is at
+# Rauros. Shared by frodoWalkingIsochrones.R (rings) and buildRoads.R (the ride).
+# (Before November 2026: rough estimates off Tolkien's map grid,
+# 45, 105, 190, 390, 440, 535, 765, 830, 985, 1000, 1030 miles.)
+milestoneNames <- c("Bucklebury", "Bree", "Weathertop", "Rivendell", "Moria", "Lothlorien",
+                    "Amon Hen", "Dead Marshes", "Minas Morgul", "Cirith Ungol", "Mount Doom")
+meGisRawMi <- c(25.6, 49.2, 101.6, 229.1, 241.5, 285.2, 399.0, 425.5, 478.3, 485.6, 501.7)
+# ME-GIS stores Middle-earth in meters at about half of Tolkien's scale. A leg's
+# straight line can't be longer than the walk, and Weathertop to Rivendell sets
+# the ceiling: 350 km walked over 205 raw km, so x1.71 at most (and even that
+# means a dead-straight road). Heiss and Fonstad use x2.0, which breaks that leg,
+# so the two sources disagree somewhere. Map geometry wins conflicts for now.
+# Set this from your georeferenced scale bar on Tolkien's map; if the bar says
+# about 2.0, recheck the Rivendell leg distance rather than the scale.
+middleEarthScale <- 1.85               # placeholder until the scale bar is measured (above the x1.71 ceiling)
+middleEarthScaleRange <- c(1.71, 2.0)  # ceiling to Heiss/Fonstad, for the uncertainty bands; narrow it after measuring
+
 # ---- Paths and grid ----------------------------------------------------------
 # Land cover: NALCMS 2020 (30 m, released 2023), reduced once to 240 m by
 # prepLandCover2020.R. Download the 30 m file from
