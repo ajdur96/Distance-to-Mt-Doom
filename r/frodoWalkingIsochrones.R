@@ -17,7 +17,7 @@ source(modelParamsPath)
 # ---- Parameters ----------------------------------------------------------
 originLon <- -77.0846    # Bag End: 1310 N Courthouse Rd, Arlington (Data Trust office)
 originLat <- 38.8888
-studyRadiusKm <- 3000     # must exceed the farthest milestone (2,865 km)
+studyRadiusKm <- 3000     # must exceed the farthest milestone (2,895 km)
 includeBoatLeg <- TRUE    # Anduin boat leg counted as if walked
 outDir <- "frodoOutputs"
 ringBasis <- "displacement"  # "displacement" = how far from home; "walked" = cumulative distance walked
@@ -29,7 +29,9 @@ milestones <- data.frame(
   name = c("Bucklebury", "Bree", "Weathertop", "Rivendell", "Moria",
            "Lothlorien", "Amon Hen", "Dead Marshes", "Minas Morgul",
            "Cirith Ungol", "Mount Doom"),
-  legKm = c(115, 100, 170, 350, 550, 195, 625, 255, 280, 35, 190),
+  # Fonstad's leg lengths, except Weathertop-Rivendell: raised from 350 to 380 km
+  # because the measured map scale puts its straight line at 364 km (modelParams.R)
+  legKm = c(115, 100, 170, 380, 550, 195, 625, 255, 280, 35, 190),
   legMode = c(rep("walk", 6), "boat", rep("walk", 4)),
   # Straight-line distance from Hobbiton, raw ME-GIS miles (modelParams.R)
   meGisRawMi = meGisRawMi

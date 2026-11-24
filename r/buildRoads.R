@@ -23,7 +23,8 @@ tileDir <- file.path(outDir, "demTiles")
 buildDir <- file.path(outDir, "builtRoads")
 dir.create(buildDir, recursive = TRUE, showWarnings = FALSE)
 
-frodoLegKm <- c(115, 100, 170, 350, 550, 195, 625, 255, 280, 35, 190)
+# Fonstad, except Rivendell raised 350 -> 380 km to clear the measured straight line
+frodoLegKm <- c(115, 100, 170, 380, 550, 195, 625, 255, 280, 35, 190)
 gradientStepM <- 2500
 
 # ---- The two roads: every stop in order (step 0 is Bag End; detours share

@@ -20,11 +20,15 @@ meGisRawMi <- c(25.6, 49.2, 101.6, 229.1, 241.5, 285.2, 399.0, 425.5, 478.3, 485
 # straight line can't be longer than the walk, and Weathertop to Rivendell sets
 # the ceiling: 350 km walked over 205 raw km, so x1.71 at most (and even that
 # means a dead-straight road). Heiss and Fonstad use x2.0, which breaks that leg,
-# so the two sources disagree somewhere. Map geometry wins conflicts for now.
-# Set this from your georeferenced scale bar on Tolkien's map; if the bar says
-# about 2.0, recheck the Rivendell leg distance rather than the scale.
-middleEarthScale <- 1.85               # placeholder until the scale bar is measured (above the x1.71 ceiling)
-middleEarthScaleRange <- c(1.71, 2.0)  # ceiling to Heiss/Fonstad, for the uncertainty bands; narrow it after measuring
+# so the two sources disagree somewhere. Map geometry wins conflicts.
+# Measured November 2026: Tolkien's general map (porjo/MiddleEarth-vector-map),
+# georeferenced to ME-GIS with an affine fit (RMS 37.8 km after dropping the worst
+# points). Its 100-league (300-mile) scale bar measures 168.85 ME-GIS miles, so
+# the scale is 300 / 168.85 = 1.777. That breaks the Weathertop-Rivendell leg at
+# Fonstad's 350 km (the straight line is 364 km), so map geometry wins and that
+# leg is raised to 380 km (frodoLegKm), about 5% longer than its straight line.
+middleEarthScale <- 1.777              # 300 miles / 168.85 measured ME-GIS miles
+middleEarthScaleRange <- c(1.74, 1.81) # about +/-2% (fit RMS and bar end placement), for the uncertainty bands
 
 # ---- Paths and grid ----------------------------------------------------------
 # Land cover: NALCMS 2020 (30 m, released 2023), reduced once to 240 m by
